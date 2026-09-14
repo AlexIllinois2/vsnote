@@ -288,14 +288,13 @@ const I18N = {
     csBrowse: '浏览',
     csRun: '搜索',
     csQueryPlaceholder: '输入搜索内容...',
-    schemeDefault: '默认',
     schemeVSCode: 'VSCode',
     schemeTypora: 'Typora',
     schemeSublime: 'Sublime Text',
-    schemeCustom: '自定义',
     schemeOverrideConfirm: '这将覆盖当前所有快捷键，确定切换方案吗？',
     modify: '修改',
     clear: '清除',
+    shortcutReset: '重置',
     none: '无',
     pressKeys: '按下快捷键...',
     generatingImg: '正在生成长图...',
@@ -344,7 +343,7 @@ const I18N = {
     depTauri: '桌面应用框架',
     spaces: '空格',
     settingsReset: '已恢复默认设置',
-    shortcutsReset: '已恢复默认快捷键',
+    shortcutsReset: '已恢复当前方案默认快捷键',
     saveDialogMessage: '文件已修改，是否保存？',
     imageLoadFailed: '[图片加载失败]',
     dropFileHere: '拖放文件到此处打开',
@@ -657,14 +656,13 @@ const I18N = {
     csBrowse: 'Browse',
     csRun: 'Search',
     csQueryPlaceholder: 'Enter search query...',
-    schemeDefault: 'Default',
     schemeVSCode: 'VSCode',
     schemeTypora: 'Typora',
     schemeSublime: 'Sublime Text',
-    schemeCustom: 'Custom',
     schemeOverrideConfirm: 'This will override all current shortcuts. Switch scheme?',
     modify: 'Modify',
     clear: 'Clear',
+    shortcutReset: 'Reset',
     none: 'None',
     pressKeys: 'Press keys...',
     generatingImg: 'Generating image...',
@@ -714,7 +712,7 @@ const I18N = {
     depTauri: 'Desktop application framework',
     spaces: 'spaces',
     settingsReset: 'Settings reset to defaults',
-    shortcutsReset: 'Shortcuts reset to defaults',
+    shortcutsReset: 'Scheme shortcuts reset to defaults',
     saveDialogMessage: 'File has been modified. Save?',
     imageLoadFailed: '[Image failed to load]',
     dropFileHere: 'Drop file here to open',
@@ -2369,7 +2367,7 @@ class MarkdownEditor {
         nextTab:'Ctrl+Tab', prevTab:'Ctrl+Shift+Tab',
         bold:'', italic:'Ctrl+I', inlineCode:'Ctrl+`', insertLink:'Ctrl+K',
         insertMathBlock:'Ctrl+Shift+M', toggleTheme:'Ctrl+Shift+T',
-        fileSearch:'Ctrl+P', globalSearch:'Ctrl+Shift+H',
+        fileSearch:'Ctrl+P', globalSearch:'Ctrl+Shift+F',
         toggleSidebar:'Ctrl+B',
       },
       typora: {
@@ -2392,13 +2390,11 @@ class MarkdownEditor {
     };
   }
 
-  // 构建某个方案解析后的完整快捷键表（以默认键位为基，叠加预置方案的覆盖项）。
-  // default/custom 之外缺失的 action 回落为空串，保证 this.shortcuts 始终含全部 action。
+  // 构建某方案「出厂」键位表：以 getDefaultShortcuts 为 action 清单/label 来源，
+  // 叠加预置方案覆盖；预置未列出的 action 回落空串，保证返回表始终含全部 action。
   buildSchemeShortcuts(name) {
     const defaults = this.getDefaultShortcuts();
-    if (!name || name === 'default') return JSON.parse(JSON.stringify(defaults));
-    const preset = this.getShortcutPresets()[name];
-    if (!preset) return JSON.parse(JSON.stringify(defaults));
+    const preset = this.getShortcutPresets()[name] || this.getShortcutPresets().vscode;
     const next = {};
     for (const [aid, def] of Object.entries(defaults)) {
       const k = preset[aid];
@@ -2407,108 +2403,110 @@ class MarkdownEditor {
     return next;
   }
 
-  applyShortcutScheme(name) {
-    if (name === 'custom') {
-      this.shortcutScheme = 'custom';
-      this.saveShortcutScheme('custom');
-      return;
-    }
-    this.shortcuts = this.buildSchemeShortcuts(name);
-    this.shortcutScheme = name;
-    this.saveShortcuts();
-    this.saveShortcutScheme(name);
-    this.renderShortcutsList();
-    this.applyShortcuts();
+  // 方案私有覆盖表（localStorage）：{ [scheme]: { [actionId]: key } }，
+  // 只记录与方案出厂键位的差异（修改/清空）；删除差异项即恢复该项出厂键位。
+  _loadShortcutOverrides() {
+    try {
+      const v = JSON.parse(localStorage.getItem('tizumark-shortcut-overrides'));
+      return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+    } catch { return {}; }
   }
 
-  // 预览方案：把预置键位加载到 this.shortcuts 并渲染列表（供用户「随意切换」查看），
-  // 不持久化、不应用 CM（编辑器实际键位不变）；点快捷键对话框「确认」按钮才正式生效。
-  previewShortcutScheme(name) {
-    if (name === 'custom') {
-      // 自定义方案：预览已保存/编辑中的自定义键位（不含其他方案的临时预览值）
-      this.shortcuts = this.loadShortcuts();
-      this.shortcutScheme = 'custom';
-      this.renderShortcutsList();
-      return;
+  // 旧体系一次性迁移：旧版是「tizumark-shortcuts 全量表 + scheme 可为 default/custom」，
+  // 新体系是「每方案独立差异表」。命名方案的旧自定义归入原方案；default/custom 的
+  // 旧自定义归入 vscode（新体系默认方案）。迁移后删除旧键，避免重复触发。
+  _migrateLegacyShortcuts() {
+    try {
+      const legacy = this._validConfigObject(JSON.parse(localStorage.getItem('tizumark-shortcuts')));
+      if (!legacy) return;
+      const old = localStorage.getItem('tizumark-shortcut-scheme');
+      const target = ['vscode', 'typora', 'sublime'].includes(old) ? old : 'vscode';
+      const base = this.buildSchemeShortcuts(target);
+      const diff = {};
+      for (const [aid, cfg] of Object.entries(legacy)) {
+        if (!base[aid]) continue; // findReplace/previewFind 等已废弃项直接丢弃
+        const key = (cfg && cfg.key) || '';
+        if (key !== (base[aid].key || '')) diff[aid] = key;
+      }
+      const overrides = this._loadShortcutOverrides();
+      overrides[target] = { ...(overrides[target] || {}), ...diff };
+      localStorage.setItem('tizumark-shortcut-overrides', JSON.stringify(overrides));
+      localStorage.removeItem('tizumark-shortcuts');
+      if (target !== old) localStorage.setItem('tizumark-shortcut-scheme', target);
+    } catch { /* 脏数据：放弃迁移，按新体系默认值走 */ }
+  }
+
+  // 读取某方案的完整键位（出厂键位 + 该方案私有覆盖）。不传则用当前方案。
+  loadSchemeShortcuts(scheme) {
+    const s = scheme || this.shortcutScheme;
+    const base = this.buildSchemeShortcuts(s);
+    const ov = this._loadShortcutOverrides()[s];
+    if (ov) {
+      for (const [aid, key] of Object.entries(ov)) {
+        if (base[aid]) base[aid] = { ...base[aid], key: key || '' };
+      }
     }
-    this.shortcuts = this.buildSchemeShortcuts(name);
-    this.shortcutScheme = name;
-    this.renderShortcutsList();
+    return base;
   }
 
   loadShortcuts() {
-    const defaults = this.getDefaultShortcuts();
-    try {
-      const saved = this._validConfigObject(JSON.parse(localStorage.getItem('tizumark-shortcuts')));
-      if (!saved) {
-        // 首次启动（无已保存快捷键）：默认采用 VS Code 方案
-        return this.buildSchemeShortcuts('vscode');
-      }
-      const merged = { ...defaults, ...saved };
-      // 迁移：Ctrl+Shift+F 被中文输入法拦截，迁移到 Ctrl+H（不受输入法拦截）。
-      // 此前中间版本用过 Ctrl+Shift+L，也一并迁移到 Ctrl+H。
-      if (merged.crossSearch && (merged.crossSearch.key === 'Ctrl+Shift+F' || merged.crossSearch.key === 'Ctrl+Shift+L')) {
-        merged.crossSearch = { ...merged.crossSearch, key: 'Ctrl+H' };
-      }
-      // 迁移：globalSearch 的旧默认键 Ctrl+Shift+F 被中文输入法（搜狗/微软拼音的
-      // 「简繁切换」）在 OS 层拦截，keydown 不会到达 DOM（跨文件搜索此前已因同一
-      // 原因迁离该键）；旧版本保存过快捷键的用户此项为空串。统一迁到 Ctrl+Shift+H。
-      // 打标记后不再迁移，尊重用户迁移后的再次自定义/清空。
-      if (merged.globalSearch
-          && (merged.globalSearch.key === '' || merged.globalSearch.key === 'Ctrl+Shift+F')
-          && !localStorage.getItem('tizumark-shortcut-globalsearch-migrated')
-          && !Object.values(merged).some(c => c && c.key === 'Ctrl+Shift+H')) {
-        merged.globalSearch = { ...merged.globalSearch, key: 'Ctrl+Shift+H' };
-        try {
-          localStorage.setItem('tizumark-shortcut-globalsearch-migrated', '1');
-          localStorage.setItem('tizumark-shortcuts', JSON.stringify(merged));
-        } catch {}
-      }
-      // 迁移：findReplace / previewFind 不再作为独立快捷键项（与 find 是同一功能），
-      // 若用户有保存的键位则清理。
-      if (merged.findReplace) delete merged.findReplace;
-      if (merged.previewFind) delete merged.previewFind;
-      return merged;
-    } catch {
-      return this.buildSchemeShortcuts('vscode');
-    }
+    this._migrateLegacyShortcuts();
+    this.shortcutScheme = this.loadShortcutScheme();
+    return this.loadSchemeShortcuts(this.shortcutScheme);
   }
 
+  // 持久化：把当前键位表与当前方案出厂键位的差异写入该方案的覆盖表
   saveShortcuts() {
-    try { localStorage.setItem('tizumark-shortcuts', JSON.stringify(this.shortcuts)); } catch {}
+    try {
+      const base = this.buildSchemeShortcuts(this.shortcutScheme);
+      const diff = {};
+      for (const [aid, cfg] of Object.entries(this.shortcuts)) {
+        if (!base[aid]) continue;
+        const key = (cfg && cfg.key) || '';
+        if (key !== (base[aid].key || '')) diff[aid] = key;
+      }
+      const overrides = this._loadShortcutOverrides();
+      overrides[this.shortcutScheme] = diff;
+      localStorage.setItem('tizumark-shortcut-overrides', JSON.stringify(overrides));
+    } catch {}
   }
 
   loadShortcutScheme() {
-    const VALID = ['default', 'vscode', 'typora', 'sublime', 'custom'];
+    const VALID = ['vscode', 'typora', 'sublime'];
     const stored = localStorage.getItem('tizumark-shortcut-scheme');
-    if (stored && VALID.includes(stored)) return stored; // 白名单校验，防脏数据
-    // 全新安装（无 scheme 且无已保存快捷键）→ 默认采用 VS Code 方案
-    if (!localStorage.getItem('tizumark-shortcuts')) return 'vscode';
-    // 旧数据无 scheme：与默认逐项比对，有差异视为自定义（保留用户旧自定义数据）
-    const def = this.getDefaultShortcuts();
-    const cur = this.shortcuts || def;
-    for (const [aid, d] of Object.entries(def)) {
-      if ((cur[aid] && cur[aid].key || '') !== (d.key || '')) return 'custom';
-    }
-    return 'default';
+    return VALID.includes(stored) ? stored : 'vscode';
   }
 
   saveShortcutScheme(name) {
     try { localStorage.setItem('tizumark-shortcut-scheme', name); } catch {}
   }
 
-  _markShortcutCustom() {
-    if (this.shortcutScheme !== 'custom') {
-      this.shortcutScheme = 'custom';
-      this.saveShortcutScheme('custom');
-    }
+  applyShortcutScheme(name) {
+    if (!this.getShortcutPresets()[name]) return;
+    this._schemePreviewing = false;
+    this.shortcutScheme = name;
+    this.shortcuts = this.loadSchemeShortcuts(name);
+    this.saveShortcuts();
+    this.saveShortcutScheme(name);
+    this.renderShortcutsList();
+    this.applyShortcuts();
   }
 
+  // 预览方案：加载该方案键位到 this.shortcuts 并渲染列表（供「随意切换」查看），
+  // 不持久化、不应用 CM（编辑器实际键位不变）；点「完成」按钮才正式生效，
+  // 未确认直接关闭对话框则回滚（见 hideShortcutsDialog）。
+  previewShortcutScheme(name) {
+    if (!this.getShortcutPresets()[name]) return;
+    this.shortcuts = this.loadSchemeShortcuts(name);
+    this.shortcutScheme = name;
+    this._schemePreviewing = true;
+    this.renderShortcutsList();
+  }
+
+  // 恢复默认 = 恢复【当前方案】的出厂键位（清空该方案差异表，不影响其他方案）
   resetShortcuts() {
-    this.shortcuts = this.getDefaultShortcuts();
-    localStorage.removeItem('tizumark-shortcuts');
-    this.shortcutScheme = 'default';
-    this.saveShortcutScheme('default');
+    this.shortcuts = this.buildSchemeShortcuts(this.shortcutScheme);
+    this.saveShortcuts();
     this.renderShortcutsList();
     this.applyShortcuts();
     this.setStatus(this.t('shortcutsReset'));
@@ -2595,6 +2593,8 @@ class MarkdownEditor {
       { key: 'callout', ids: ['insertCalloutNote', 'insertCalloutTip', 'insertCalloutWarning', 'insertCalloutCaution', 'insertCalloutImportant'] },
     ];
 
+    // 每行「重置」按钮可用性：当前键与当前方案出厂键不同才可重置
+    const preset = this.buildSchemeShortcuts(this.shortcutScheme);
     container.innerHTML = groups.map(group => {
       const rows = group.ids
         .filter(id => this.shortcuts[id])
@@ -2602,6 +2602,7 @@ class MarkdownEditor {
           const shortcut = this.shortcuts[id];
           const isRecording = this.recordingAction === id;
           const label = labels[id] || shortcut.label || id;
+          const modified = (shortcut.key || '') !== ((preset[id] && preset[id].key) || '');
           return `
         <div class="shortcut-row" data-action="${id}">
           <span class="shortcut-label">${label}</span>
@@ -2609,6 +2610,7 @@ class MarkdownEditor {
             <div class="shortcut-key">${this.formatShortcutDisplay(shortcut.key)}</div>
             <button class="shortcut-record-btn${isRecording ? ' recording' : ''}" data-action="${id}">${isRecording ? this.t('pressKeys') : this.t('modify')}</button>
             <button class="shortcut-clear-btn" data-action="${id}">${this.t('clear')}</button>
+            <button class="shortcut-reset-btn" data-action="${id}"${modified ? '' : ' disabled'}>${this.t('shortcutReset')}</button>
           </div>
         </div>`;
         }).join('');
@@ -2621,7 +2623,7 @@ class MarkdownEditor {
     }).join('');
 
     const schemeSel = document.getElementById('shortcuts-scheme');
-    if (schemeSel) schemeSel.value = this.shortcutScheme || 'default';
+    if (schemeSel) schemeSel.value = this.shortcutScheme || 'vscode';
 
     container.querySelectorAll('.shortcut-record-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -2636,7 +2638,21 @@ class MarkdownEditor {
         e.stopPropagation();
         const action = btn.dataset.action;
         this.shortcuts[action].key = '';
-        this._markShortcutCustom();
+        this.saveShortcuts();
+        this.renderShortcutsList();
+        this.applyShortcuts();
+      });
+    });
+
+    // 重置单个快捷键：恢复为当前方案的出厂键位（清除该差异项）
+    container.querySelectorAll('.shortcut-reset-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (btn.disabled) return;
+        const action = btn.dataset.action;
+        const presetKey = (preset[action] && preset[action].key) || '';
+        if (!preset[action]) return;
+        this.shortcuts[action] = { ...this.shortcuts[action], key: presetKey };
         this.saveShortcuts();
         this.renderShortcutsList();
         this.applyShortcuts();
@@ -2679,7 +2695,7 @@ class MarkdownEditor {
     }
     this.shortcuts[this.recordingAction].key = keyStr;
     this.recordingAction = null;
-    this._markShortcutCustom();
+    // 直接写入当前方案（不再切换 custom 方案）
     this.saveShortcuts();
     this.renderShortcutsList();
     this.applyShortcuts();
@@ -2716,20 +2732,19 @@ class MarkdownEditor {
     if (schemeSel) {
       schemeSel.addEventListener('change', async (e) => {
         const name = e.target.value;
-        if (name === 'custom') {
-          this.shortcutScheme = 'custom';
-          this.saveShortcutScheme('custom');
-          return;
-        }
-        // 预置方案（含默认）：均为整体覆盖，一律先确认。
+        if (!name || name === this.shortcutScheme) return;
+        // 先预览该方案键位（不落盘、不应用 CM），确认对话框后才正式生效。
         // 用应用内确认对话框而非 window.confirm：Tauri WebView 把 window.confirm
         // 路由到 plugin:dialog|confirm，未授权时直接抛 ACL 错误（见快捷键方案切换报错）。
+        this.previewShortcutScheme(name);
         const ok = await this.showConfirmDialog(this.t('shortcuts'), this.t('schemeOverrideConfirm'));
         if (ok) {
           this.applyShortcutScheme(name);
-          e.target.value = this.shortcutScheme;
         } else {
-          e.target.value = this.shortcutScheme; // 取消则回退
+          // 取消：回滚到持久化状态（renderShortcutsList 会同步下拉选中项）
+          this._schemePreviewing = false;
+          this.shortcuts = this.loadShortcuts();
+          this.renderShortcutsList();
         }
       });
     }
@@ -2747,18 +2762,23 @@ class MarkdownEditor {
     const sel = document.getElementById('shortcuts-scheme');
     if (!sel) return;
     const opts = [
-      ['default', this.t('schemeDefault')],
       ['vscode', this.t('schemeVSCode')],
       ['typora', this.t('schemeTypora')],
       ['sublime', this.t('schemeSublime')],
-      ['custom', this.t('schemeCustom')],
     ];
     sel.innerHTML = opts.map(([v,l]) => `<option value="${v}">${l}</option>`).join('');
-    sel.value = this.shortcutScheme || 'default';
+    sel.value = this.shortcutScheme || 'vscode';
   }
 
   hideShortcutsDialog() {
     this.recordingAction = null;
+    // 预览未确认即关闭（× / Esc / 点击遮罩）：回滚到持久化状态，
+    // 避免下次打开时界面显示与编辑器实际键位不一致
+    if (this._schemePreviewing) {
+      this._schemePreviewing = false;
+      this.shortcuts = this.loadShortcuts();
+      this.renderShortcutsList();
+    }
     document.getElementById('shortcuts-dialog').classList.add('hidden');
   }
 

@@ -1,8 +1,9 @@
-// 功能1 回归测试库：快捷键方案（默认 / VSCode / Typora / Sublime / 自定义）。
+// 快捷键方案体系回归测试：仅 vscode / typora / sublime 三个方案（无 default/custom）。
 //
 // 设计原则（与项目现有测试一致）：
 //   从 src/app.js 抽取真实方法（balanced-brace 抽取 + eval），在桩实例上断言
-//   预置键位表、整体覆盖、方案持久化、手动录制标记 custom、旧数据兼容等行为。
+//   方案出厂键位、globalSearch 默认键、per-scheme 差异持久化、录制直接写入当前
+//   方案（不再切换 custom）、单项/整方案重置、旧体系一次性迁移、预览不落盘等行为。
 
 const { JSDOM } = require('jsdom');
 const fs = require('fs');
@@ -35,36 +36,61 @@ function extractMethod(needle) {
 const getDefaultShortcuts = extractMethod('getDefaultShortcuts() {');
 const getShortcutPresets = extractMethod('getShortcutPresets() {');
 const buildSchemeShortcuts = extractMethod('buildSchemeShortcuts(name) {');
+const _loadShortcutOverrides = extractMethod('_loadShortcutOverrides() {');
+const _migrateLegacyShortcuts = extractMethod('_migrateLegacyShortcuts() {');
+const loadSchemeShortcuts = extractMethod('loadSchemeShortcuts(scheme) {');
+const loadShortcuts = extractMethod('loadShortcuts() {');
+const saveShortcuts = extractMethod('saveShortcuts() {');
+const loadShortcutScheme = extractMethod('loadShortcutScheme() {');
 const applyShortcutScheme = extractMethod('applyShortcutScheme(name) {');
 const previewShortcutScheme = extractMethod('previewShortcutScheme(name) {');
-const loadShortcutScheme = extractMethod('loadShortcutScheme() {');
 const resetShortcuts = extractMethod('resetShortcuts() {');
 const handleShortcutRecording = extractMethod('handleShortcutRecording(e) {');
 const findDuplicateShortcut = extractMethod('findDuplicateShortcut(key, excludeAction) {');
-const _markShortcutCustom = extractMethod('_markShortcutCustom() {');
+const _validConfigObject = extractMethod('_validConfigObject(raw) {');
 
-function makeSchemeStub() {
+function makeSchemeStub(scheme = 'vscode') {
   return {
     shortcuts: null,
-    shortcutScheme: null,
+    shortcutScheme: scheme,
+    _schemePreviewing: false,
     getDefaultShortcuts,
     getShortcutPresets,
     buildSchemeShortcuts,
-    saveShortcuts() {},
+    _loadShortcutOverrides,
+    _migrateLegacyShortcuts,
+    loadSchemeShortcuts,
+    loadShortcuts,
+    saveShortcuts,
+    loadShortcutScheme,
     saveShortcutScheme(name) { try { localStorage.setItem('tizumark-shortcut-scheme', name); } catch {} },
+    applyShortcutScheme,
+    previewShortcutScheme,
+    resetShortcuts,
+    handleShortcutRecording,
+    findDuplicateShortcut,
+    _validConfigObject,
     renderShortcutsList() {},
     applyShortcuts() {},
+    setStatus() {},
+    showToast() {},
+    t: (k) => k,
   };
+}
+
+function overrides() {
+  return JSON.parse(localStorage.getItem('tizumark-shortcut-overrides') || 'null');
 }
 
 // ============================================================
 // B. 预置方案数据完整性
 // ============================================================
 
-test('B1 预置表含 3 个方案（vscode/typora/sublime）', async () => {
+test('B1 预置表含 3 个方案（vscode/typora/sublime），无 default/custom', async () => {
   const presets = getShortcutPresets();
   assert.strictEqual(Object.keys(presets).length, 3);
   assert.ok(['vscode', 'typora', 'sublime'].every(k => k in presets));
+  assert.ok(!('default' in presets) && !('custom' in presets));
 });
 
 test('B2 每方案内部键位互不重复', async () => {
@@ -84,170 +110,195 @@ test('B3 预置方案仅引用合法 actionId', async () => {
 });
 
 // ============================================================
-// C. applyShortcutScheme 整体覆盖
+// C. 方案出厂键位 + per-scheme 差异表
 // ============================================================
 
-// 默认设置项总数以 getDefaultShortcuts 为准（历史上曾为 44：含 findReplace/previewFind，
-// 二者与 find 同一功能已合并移除，现为 42；2026-08-02 新增 moveLineUp/moveLineDown，现为 44）
-const DEFAULT_COUNT = Object.keys(getDefaultShortcuts()).length;
+test('C1 vscode 出厂键位覆盖全部 action，globalSearch 默认 Ctrl+Shift+F', async () => {
+  const s = makeSchemeStub('vscode');
+  const table = s.buildSchemeShortcuts('vscode');
+  assert.strictEqual(Object.keys(table).length, Object.keys(s.getDefaultShortcuts()).length);
+  assert.strictEqual(table.globalSearch.key, 'Ctrl+Shift+F', 'VSCode 方案默认全局搜索快捷键');
+  assert.strictEqual(table.strikethrough.key, '', '预置未列出的 action 回落空串');
+});
 
-test('C1 applyShortcutScheme("typora") 覆盖全部默认项且不重复', async () => {
+test('C2 buildSchemeShortcuts 未知方案名回落 vscode', async () => {
   const s = makeSchemeStub();
-  applyShortcutScheme.call(s, 'typora');
-  assert.strictEqual(Object.keys(s.shortcuts).length, DEFAULT_COUNT);
-  assert.strictEqual(s.shortcuts.insertH1.key, 'Ctrl+1');
-  assert.strictEqual(s.shortcuts.strikethrough.key, 'Ctrl+Shift+5');
-  assert.strictEqual(s.shortcuts.saveAs.key, '');
-  assert.strictEqual(s.shortcutScheme, 'typora');
+  const table = s.buildSchemeShortcuts('hacked');
+  assert.strictEqual(table.globalSearch.key, 'Ctrl+Shift+F');
+  assert.strictEqual(table.saveAs.key, 'Ctrl+Shift+S');
 });
 
-test('C2 applyShortcutScheme("vscode") 与默认不撞（saveAs=Ctrl+Shift+S，strikethrough 回落空）', async () => {
-  const s = makeSchemeStub();
-  applyShortcutScheme.call(s, 'vscode');
-  assert.strictEqual(Object.keys(s.shortcuts).length, DEFAULT_COUNT);
-  assert.strictEqual(s.shortcuts.saveAs.key, 'Ctrl+Shift+S');
-  assert.strictEqual(s.shortcuts.strikethrough.key, '');
-  assert.strictEqual(s.shortcutScheme, 'vscode');
-});
-
-test('C3 applyShortcutScheme("default") 整体恢复默认键位', async () => {
-  const s = makeSchemeStub();
-  applyShortcutScheme.call(s, 'default');
-  const def = getDefaultShortcuts();
-  assert.strictEqual(Object.keys(s.shortcuts).length, DEFAULT_COUNT);
-  assert.strictEqual(s.shortcuts.bold.key, def.bold.key);
-  assert.strictEqual(s.shortcuts.saveAs.key, def.saveAs.key);
-  assert.strictEqual(s.shortcutScheme, 'default');
-});
-
-test('C4 方案持久化到 localStorage', async () => {
-  const s = makeSchemeStub();
-  applyShortcutScheme.call(s, 'vscode');
-  assert.strictEqual(s.shortcutScheme, 'vscode');
-  assert.strictEqual(localStorage.getItem('tizumark-shortcut-scheme'), 'vscode');
-});
-
-// ============================================================
-// D. 手动录制/清除 → 标记 custom；reset → 默认
-// ============================================================
-
-test('D1 手动录制成功后标记 custom', async () => {
-  const s = {
-    shortcuts: getDefaultShortcuts(),
-    recordingAction: 'bold',
-    shortcutScheme: 'vscode',
-    getDefaultShortcuts,
-    findDuplicateShortcut,
-    showToast() {},
-    saveShortcuts() {},
-    saveShortcutScheme(name) { try { localStorage.setItem('tizumark-shortcut-scheme', name); } catch {} },
-    renderShortcutsList() {},
-    applyShortcuts() {},
-    _markShortcutCustom,
-    t: (k) => k, // shortcutLabel 占位（冲突提示路径用）
-  };
-  // dev2 的 toggleSidebar 与 bold 同为 Ctrl+B（既有绑定），用 Ctrl+J 录制避免冲突
-  const handled = handleShortcutRecording.call(s, { key: 'J', ctrlKey: true, preventDefault() {}, stopPropagation() {} });
-  assert.strictEqual(handled, true);
-  assert.strictEqual(s.shortcutScheme, 'custom');
-});
-
-test('D2 resetShortcuts 联动方案回默认并持久化', async () => {
-  localStorage.removeItem('tizumark-shortcut-scheme');
-  const s = {
-    shortcuts: null,
-    shortcutScheme: 'vscode',
-    getDefaultShortcuts,
-    saveShortcuts() {},
-    saveShortcutScheme(name) { try { localStorage.setItem('tizumark-shortcut-scheme', name); } catch {} },
-    renderShortcutsList() {},
-    applyShortcuts() {},
-    setStatus() {},
-    t: (k) => k,
-  };
-  resetShortcuts.call(s);
-  assert.strictEqual(Object.keys(s.shortcuts).length, DEFAULT_COUNT);
-  assert.strictEqual(s.shortcutScheme, 'default');
-  assert.strictEqual(localStorage.getItem('tizumark-shortcut-scheme'), 'default');
-});
-
-// ============================================================
-// E. 旧数据兼容（无 scheme 键）
-// ============================================================
-
-test('E1 旧数据无 scheme 键且有差异 → loadShortcutScheme 返回 custom', async () => {
-  localStorage.removeItem('tizumark-shortcut-scheme');
-  localStorage.setItem('tizumark-shortcuts', JSON.stringify({ bold: { key: 'Ctrl+Z' } }));
-  const s = { shortcuts: { bold: { key: 'Ctrl+Z' } }, getDefaultShortcuts };
-  assert.strictEqual(loadShortcutScheme.call(s), 'custom');
-});
-
-test('E2 旧数据无 scheme 键且无差异 → 返回 default', async () => {
-  localStorage.removeItem('tizumark-shortcut-scheme');
-  const def = getDefaultShortcuts();
-  localStorage.setItem('tizumark-shortcuts', JSON.stringify(def));
-  const s = { shortcuts: def, getDefaultShortcuts };
-  assert.strictEqual(loadShortcutScheme.call(s), 'default');
-});
-
-test('E3 脏 scheme 值被白名单过滤（回退差异探测）', async () => {
-  localStorage.setItem('tizumark-shortcut-scheme', 'hacked');
-  const def = getDefaultShortcuts();
-  localStorage.setItem('tizumark-shortcuts', JSON.stringify(def));
-  const s = { shortcuts: def, getDefaultShortcuts };
-  assert.strictEqual(loadShortcutScheme.call(s), 'default');
-});
-
-// ============================================================
-// G. previewShortcutScheme：切换预览，不生效不持久化（22:39 需求）
-// ============================================================
-
-function makePreviewStub() {
-  const calls = { render: 0, saveShortcuts: 0, saveScheme: 0, apply: 0, loadShortcuts: 0 };
-  const s = {
-    shortcuts: null,
-    shortcutScheme: null,
-    getDefaultShortcuts,
-    getShortcutPresets,
-    buildSchemeShortcuts,
-    loadShortcuts() { calls.loadShortcuts++; return { bold: { key: 'Ctrl+Z', label: '加粗' } }; },
-    saveShortcuts() { calls.saveShortcuts++; },
-    saveShortcutScheme() { calls.saveScheme++; },
-    renderShortcutsList() { calls.render++; },
-    applyShortcuts() { calls.apply++; },
-  };
-  return { s, calls };
-}
-
-test('G1 previewShortcutScheme("typora") 加载键位+渲染列表，但不持久化、不应用 CM', async () => {
-  const { s, calls } = makePreviewStub();
-  previewShortcutScheme.call(s, 'typora');
-  assert.strictEqual(Object.keys(s.shortcuts).length, DEFAULT_COUNT, '应加载方案键位');
-  assert.strictEqual(s.shortcuts.insertH1.key, 'Ctrl+1');
-  assert.strictEqual(s.shortcutScheme, 'typora');
-  assert.strictEqual(calls.render, 1, '应渲染列表供预览');
-  assert.strictEqual(calls.saveShortcuts, 0, '预览不得持久化键位');
-  assert.strictEqual(calls.saveScheme, 0, '预览不得持久化方案名');
-  assert.strictEqual(calls.apply, 0, '预览不得应用 CM（切换不生效）');
-});
-
-test('G2 previewShortcutScheme("custom") 加载自定义键位预览，同样不生效', async () => {
-  const { s, calls } = makePreviewStub();
-  previewShortcutScheme.call(s, 'custom');
-  assert.strictEqual(calls.loadShortcuts, 1, 'custom 应加载已保存键位');
-  assert.strictEqual(s.shortcuts.bold.key, 'Ctrl+Z', '应展示自定义键位');
-  assert.strictEqual(s.shortcutScheme, 'custom');
-  assert.strictEqual(calls.saveShortcuts, 0);
-  assert.strictEqual(calls.apply, 0);
-});
-
-test('G3 切换只预览：预览后 shortcutScheme 已变但未持久化（确认按钮才落盘）', async () => {
-  localStorage.removeItem('tizumark-shortcut-scheme');
-  const { s } = makePreviewStub();
-  previewShortcutScheme.call(s, 'vscode');
-  assert.strictEqual(s.shortcutScheme, 'vscode');
+test('C3 saveShortcuts 只把与出厂键位的差异写入当前方案覆盖表', async () => {
+  localStorage.clear();
+  const s = makeSchemeStub('typora');
+  s.shortcuts = s.buildSchemeShortcuts('typora');
+  s.shortcuts.insertH1 = { ...s.shortcuts.insertH1, key: 'Ctrl+7' }; // 出厂 Ctrl+1 → 修改
+  s.shortcuts.bold = { ...s.shortcuts.bold, key: '' };               // 出厂 Ctrl+B → 清空
+  s.shortcuts.italic = { ...s.shortcuts.italic, key: 'Ctrl+I' };     // 与出厂一致 → 不写
+  s.saveShortcuts();
+  assert.deepStrictEqual(overrides().typora, { insertH1: 'Ctrl+7', bold: '' },
+    '覆盖表只含差异项（修改 + 清空），不含与出厂一致的项');
   assert.strictEqual(localStorage.getItem('tizumark-shortcut-scheme'), null,
-    '预览不得写入 localStorage（确认后才持久化）');
+    'saveShortcuts 不改写方案名');
+});
+
+test('C4 loadSchemeShortcuts = 出厂键位 + 该方案覆盖表合并', async () => {
+  localStorage.clear();
+  localStorage.setItem('tizumark-shortcut-overrides', JSON.stringify({ vscode: { bold: 'Ctrl+J' } }));
+  const s = makeSchemeStub('vscode');
+  const table = s.loadSchemeShortcuts('vscode');
+  assert.strictEqual(table.bold.key, 'Ctrl+J', '差异项生效');
+  assert.strictEqual(table.italic.key, 'Ctrl+I', '出厂项不受影响');
+  // 其他方案的差异不串味
+  localStorage.setItem('tizumark-shortcut-overrides', JSON.stringify({ typora: { bold: 'Ctrl+P' } }));
+  assert.strictEqual(s.loadSchemeShortcuts('vscode').bold.key, '', 'vscode 出厂 bold 为空，不读 typora 差异');
+});
+
+// ============================================================
+// D. 录制写入当前方案 + 整方案重置
+// ============================================================
+
+test('D1 手动录制直接写入当前方案，方案名不再切换 custom', async () => {
+  localStorage.clear();
+  const s = makeSchemeStub('vscode');
+  s.shortcuts = s.loadSchemeShortcuts('vscode');
+  s.recordingAction = 'bold'; // vscode 出厂 bold=''
+  const handled = s.handleShortcutRecording({ key: 'J', ctrlKey: true, preventDefault() {}, stopPropagation() {} });
+  assert.strictEqual(handled, true);
+  assert.strictEqual(s.shortcuts.bold.key, 'Ctrl+J');
+  assert.strictEqual(s.shortcutScheme, 'vscode', '录制后方案名应保持不变');
+  assert.strictEqual(overrides().vscode.bold, 'Ctrl+J', '差异已持久化');
+});
+
+test('D2 resetShortcuts 恢复【当前方案】出厂键位并清空该方案差异', async () => {
+  localStorage.clear();
+  const s = makeSchemeStub('typora');
+  s.shortcuts = s.loadSchemeShortcuts('typora');
+  s.shortcuts.insertH1 = { ...s.shortcuts.insertH1, key: 'Ctrl+7' };
+  s.saveShortcuts();
+  s.resetShortcuts();
+  assert.strictEqual(s.shortcuts.insertH1.key, 'Ctrl+1', '恢复 typora 出厂 Ctrl+1');
+  assert.strictEqual(s.shortcutScheme, 'typora', '方案名不变');
+  assert.deepStrictEqual(overrides().typora, {}, '该方案差异表应清空');
+});
+
+test('D3 清除键位作为差异持久化（方案名不变）', async () => {
+  localStorage.clear();
+  const s = makeSchemeStub('typora');
+  s.shortcuts = s.loadSchemeShortcuts('typora');
+  s.shortcuts.bold = { ...s.shortcuts.bold, key: '' }; // typora 出厂 bold='Ctrl+B'
+  s.saveShortcuts();
+  assert.strictEqual(overrides().typora.bold, '');
+  assert.strictEqual(s.shortcutScheme, 'typora');
+});
+
+// ============================================================
+// E. 旧体系一次性迁移 + scheme 白名单
+// ============================================================
+
+test('E1 旧体系 default/custom 用户迁移归入 vscode，旧自定义保留', async () => {
+  localStorage.clear();
+  localStorage.setItem('tizumark-shortcuts', JSON.stringify({ bold: { key: 'Ctrl+Z', label: '加粗' } }));
+  localStorage.setItem('tizumark-shortcut-scheme', 'custom');
+  const s = makeSchemeStub('vscode');
+  const table = s.loadShortcuts();
+  assert.strictEqual(s.shortcutScheme, 'vscode', 'custom 应迁移为 vscode');
+  assert.strictEqual(table.bold.key, 'Ctrl+Z', '旧自定义键位保留');
+  assert.strictEqual(localStorage.getItem('tizumark-shortcuts'), null, '旧全量表应删除');
+  assert.strictEqual(overrides().vscode.bold, 'Ctrl+Z', '差异应写入覆盖表');
+});
+
+test('E2 旧体系命名方案用户迁移回原方案', async () => {
+  localStorage.clear();
+  localStorage.setItem('tizumark-shortcuts', JSON.stringify({ bold: { key: 'Ctrl+Z', label: '加粗' } }));
+  localStorage.setItem('tizumark-shortcut-scheme', 'typora');
+  const s = makeSchemeStub('typora');
+  const table = s.loadShortcuts();
+  assert.strictEqual(s.shortcutScheme, 'typora');
+  assert.strictEqual(table.bold.key, 'Ctrl+Z', 'typora 出厂 Ctrl+B → 旧值 Ctrl+Z 为差异');
+  assert.strictEqual(overrides().typora.bold, 'Ctrl+Z');
+});
+
+test('E3 迁移丢弃已废弃 actionId（findReplace/previewFind）', async () => {
+  localStorage.clear();
+  localStorage.setItem('tizumark-shortcuts', JSON.stringify({
+    bold: { key: 'Ctrl+Z', label: '加粗' },
+    findReplace: { key: 'Ctrl+R', label: '查找和替换' },
+  }));
+  localStorage.setItem('tizumark-shortcut-scheme', 'custom');
+  const s = makeSchemeStub('vscode');
+  s.loadShortcuts();
+  assert.deepStrictEqual(overrides().vscode, { bold: 'Ctrl+Z' }, '废弃项不应进入覆盖表');
+});
+
+test('E4 scheme 白名单外/缺失一律回落 vscode', async () => {
+  localStorage.clear();
+  const s = makeSchemeStub();
+  localStorage.setItem('tizumark-shortcut-scheme', 'hacked');
+  assert.strictEqual(s.loadShortcutScheme(), 'vscode');
+  localStorage.removeItem('tizumark-shortcut-scheme');
+  assert.strictEqual(s.loadShortcutScheme(), 'vscode');
+  localStorage.setItem('tizumark-shortcut-scheme', 'sublime');
+  assert.strictEqual(s.loadShortcutScheme(), 'sublime');
+});
+
+test('E5 全新安装（无任何存储）：loadShortcuts 返回 vscode 出厂键位', async () => {
+  localStorage.clear();
+  const s = makeSchemeStub();
+  const table = s.loadShortcuts();
+  assert.strictEqual(s.shortcutScheme, 'vscode');
+  assert.strictEqual(table.globalSearch.key, 'Ctrl+Shift+F');
+});
+
+// ============================================================
+// G. previewShortcutScheme：预览不落盘、不应用 CM
+// ============================================================
+
+test('G1 previewShortcutScheme 加载键位+渲染，但不持久化、不应用 CM', async () => {
+  localStorage.clear();
+  const s = makeSchemeStub('vscode');
+  s.shortcuts = s.loadSchemeShortcuts('vscode');
+  let rendered = 0, applied = 0;
+  s.renderShortcutsList = () => rendered++;
+  s.applyShortcuts = () => applied++;
+  s.previewShortcutScheme('typora');
+  assert.strictEqual(s.shortcuts.insertH1.key, 'Ctrl+1', '应加载方案出厂键位');
+  assert.strictEqual(s.shortcutScheme, 'typora');
+  assert.strictEqual(s._schemePreviewing, true, '应打预览标记（供取消回滚）');
+  assert.strictEqual(rendered, 1, '应渲染列表供预览');
+  assert.strictEqual(applied, 0, '预览不得应用 CM');
+  assert.strictEqual(localStorage.getItem('tizumark-shortcut-scheme'), null, '预览不得持久化方案名');
+  assert.strictEqual(overrides(), null, '预览不得写覆盖表');
+});
+
+test('G2 previewShortcutScheme 应包含该方案已保存的差异', async () => {
+  localStorage.clear();
+  localStorage.setItem('tizumark-shortcut-overrides', JSON.stringify({ typora: { insertH1: 'Ctrl+9' } }));
+  const s = makeSchemeStub('vscode');
+  s.previewShortcutScheme('typora');
+  assert.strictEqual(s.shortcuts.insertH1.key, 'Ctrl+9', '预览含该方案已有差异');
+});
+
+test('G3 applyShortcutScheme 正式生效并持久化（清除预览标记）', async () => {
+  localStorage.clear();
+  const s = makeSchemeStub('vscode');
+  s.shortcuts = s.loadSchemeShortcuts('vscode');
+  let applied = 0;
+  s.applyShortcuts = () => applied++;
+  s.previewShortcutScheme('typora');
+  s.applyShortcutScheme('typora');
+  assert.strictEqual(s._schemePreviewing, false, '生效后应清除预览标记');
+  assert.strictEqual(applied, 1, '生效后应应用 CM');
+  assert.strictEqual(localStorage.getItem('tizumark-shortcut-scheme'), 'typora');
+});
+
+test('G4 previewShortcutScheme 非法方案名直接忽略', async () => {
+  localStorage.clear();
+  const s = makeSchemeStub('vscode');
+  const before = s.shortcutScheme;
+  s.previewShortcutScheme('hacked');
+  assert.strictEqual(s.shortcutScheme, before);
+  assert.strictEqual(s._schemePreviewing, false);
 });
 
 // ============================================================

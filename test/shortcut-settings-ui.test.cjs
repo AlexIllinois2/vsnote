@@ -66,21 +66,23 @@ test('设置项：列表按功能分组渲染且默认项全覆盖', async () =>
   }
 });
 
-test('迁移：已保存的 previewFind/findReplace 键位被清理，旧 crossSearch 键位迁移为 Ctrl+H', async () => {
+test('迁移：旧全量表中废弃项丢弃，用户自定义键位按差异保留', async () => {
   const { w } = await buildEnv({ captureInitErr: true });
   try {
     await waitForEditor(w);
     const ed = w.editor;
-    // 模拟旧版本保存的配置
+    // 模拟旧版本保存的配置（全量表，scheme 为 custom → 归入 vscode 差异表）
     w.localStorage.setItem('tizumark-shortcuts', JSON.stringify({
       previewFind: { key: 'Ctrl+Shift+P', label: '预览查找' },
       findReplace: { key: 'Ctrl+H', label: '查找和替换' },
       crossSearch: { key: 'Ctrl+Shift+F', label: '跨文件搜索' },
     }));
     const loaded = ed.loadShortcuts();
-    assert.strictEqual(loaded.previewFind, undefined, '已保存的 previewFind 应被迁移清理');
-    assert.strictEqual(loaded.findReplace, undefined, '已保存的 findReplace 应被迁移清理');
-    assert.strictEqual(loaded.crossSearch.key, 'Ctrl+H', '旧 Ctrl+Shift+F 应迁移为 Ctrl+H');
+    assert.strictEqual(loaded.previewFind, undefined, '已废弃的 previewFind 应被迁移丢弃');
+    assert.strictEqual(loaded.findReplace, undefined, '已废弃的 findReplace 应被迁移丢弃');
+    // 旧体系会把 Ctrl+Shift+F 强制迁回 Ctrl+H；新体系尊重用户已保存的键位（作为差异保留）
+    assert.strictEqual(loaded.crossSearch.key, 'Ctrl+Shift+F', '用户自定义键位应作为差异保留');
+    assert.strictEqual(w.localStorage.getItem('tizumark-shortcuts'), null, '旧全量表应删除');
   } finally {
     cleanup(w);
   }

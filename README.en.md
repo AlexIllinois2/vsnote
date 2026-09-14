@@ -70,7 +70,7 @@ The world isn't short of Markdown editors. But most fall into one of two camps: 
 | Full GFM syntax highlighting | Live scroll-synced preview | Standalone HTML (with full styling) |
 | 100+ language code highlighting | KaTeX math rendering | High-res long screenshot PNG |
 | Find & replace with regex | Mermaid flowcharts, sequences, Gantt, state | Export PDF (`Ctrl+P` print dialog) |
-| Cross-file search (`Ctrl+H`) / Global search (`Ctrl+Shift+H`) | Emoji shortcodes (`:rocket:` → 🚀) | Dark / light theme preserved |
+| Cross-file search (`Ctrl+H`) / Global search (`Ctrl+Shift+F`) | Emoji shortcodes (`:rocket:` → 🚀) | Dark / light theme preserved |
 | Collapsible format toolbar | Image viewer (drag-pan + scroll-zoom) | 100% offline |
 | Auto bracket & quote pairing | Adaptive image sizing | CJK Emoji support |
 | Image paste, auto-dedup (MD5) | Clickable task-list checkboxes | Custom image asset path |

@@ -3828,6 +3828,32 @@ body.is-resizing .side-btn {
   color: var(--color-danger);
 }
 
+.shortcut-reset-btn {
+  padding: 3px 8px;
+  font-size: 11px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color, color, border-color, opacity, transform, box-shadow 0.15s;
+}
+
+.shortcut-reset-btn:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.shortcut-reset-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.shortcut-reset-btn:disabled:hover {
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
 .shortcut-actions {
   display: flex;
   align-items: center;

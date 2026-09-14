@@ -5,7 +5,8 @@
 //  3. 点击文件树以外区域清除 _fileTreeCtx（防止残留上下文劫持快捷键）
 //  4. 右键文件 → 新建文件(夹)菜单项可用；新建为同级；新建文件后自动打开
 //  5. Ctrl+= / Ctrl+- / Ctrl+0 → WebView 整页缩放（Tauri set_webview_zoom）
-//  6. globalSearch 默认键迁移 Ctrl+Shift+F → Ctrl+Shift+H（中文输入法 OS 层拦截）
+//  6. VSCode 方案 globalSearch 默认键为 Ctrl+Shift+F（旧体系 Ctrl+Shift+H 迁移逻辑已废除，
+//     旧存储数据按 per-scheme 差异表一次性迁移）
 const test = require('node:test');
 const assert = require('node:assert');
 const { withEditor, delay } = require('./helpers/app-env.cjs');
@@ -143,41 +144,30 @@ test('Ctrl+= / Ctrl+- / Ctrl+0 触发 WebView 缩放（Tauri set_webview_zoom）
   });
 });
 
-test('globalSearch 旧键 Ctrl+Shift+F 迁移到 Ctrl+Shift+H 且派发生效', async () => {
+test('globalSearch 默认键 Ctrl+Shift+F 派发生效；旧存储按差异表迁移', async () => {
   await withEditor({ captureInitErr: true }, (w, ed) => {
-    // 全新安装（vscode 方案）：默认键已改为 Ctrl+Shift+H
-    assert.strictEqual(typeof ed.globalShortcutLookup['Ctrl+Shift+H'], 'function',
-      '新环境 globalSearch 应绑定 Ctrl+Shift+H');
-    assert.strictEqual(ed.globalShortcutLookup['Ctrl+Shift+F'], undefined,
-      'Ctrl+Shift+F（中文输入法 OS 层拦截）不应再绑定');
-
-    // 模拟旧版本保存过快捷键（globalSearch 为旧键）的用户：loadShortcuts 应迁移
-    const savedOld = {
-      find: { key: 'Ctrl+F', label: '查找替换' },
-      crossSearch: { key: 'Ctrl+H', label: '跨文件搜索' },
-      globalSearch: { key: 'Ctrl+Shift+F', label: '全局搜索' },
-    };
-    w.localStorage.setItem('tizumark-shortcuts', JSON.stringify(savedOld));
-    w.localStorage.removeItem('tizumark-shortcut-globalsearch-migrated');
-    const merged = ed.loadShortcuts();
-    assert.strictEqual(merged.globalSearch.key, 'Ctrl+Shift+H', '旧键应迁移到 Ctrl+Shift+H');
-    assert.strictEqual(w.localStorage.getItem('tizumark-shortcut-globalsearch-migrated'), '1',
-      '迁移应打标记');
-
-    // 已打标记后，用户再次清空不再被强制迁移（尊重用户自定义）
-    w.localStorage.setItem('tizumark-shortcuts', JSON.stringify({
-      ...savedOld,
-      globalSearch: { key: '', label: '全局搜索' },
-    }));
-    const merged2 = ed.loadShortcuts();
-    assert.strictEqual(merged2.globalSearch.key, '', '打过标记后应尊重用户的清空');
+    // 全新安装：vscode 方案 globalSearch 默认键为 Ctrl+Shift+F
+    assert.strictEqual(typeof ed.globalShortcutLookup['Ctrl+Shift+F'], 'function',
+      'vscode 方案 globalSearch 应默认绑定 Ctrl+Shift+F');
+    assert.strictEqual(ed.globalShortcutLookup['Ctrl+Shift+H'], undefined,
+      'Ctrl+Shift+H 不应再绑定');
 
     // 派发验证：编辑器有焦点时 Ctrl+Shift+F 打开全局搜索
-    ed.shortcuts = merged;
-    ed.applyShortcuts();
     const dlg = w.document.getElementById('global-search-dialog');
     assert.ok(dlg.classList.contains('hidden'), '前置：全局搜索对话框应关闭');
-    dispatchKey(w, w.document.body, 'F', 'KeyF', 72, { ctrl: true, shift: true });
+    dispatchKey(w, w.document.body, 'F', 'KeyF', 70, { ctrl: true, shift: true });
     assert.ok(!dlg.classList.contains('hidden'), 'Ctrl+Shift+F 应打开全局搜索');
+
+    // 旧体系数据（全量表 + custom scheme）迁移：归入 vscode 差异表
+    w.localStorage.setItem('tizumark-shortcuts', JSON.stringify({
+      bold: { key: 'Ctrl+Z', label: '加粗' },
+      globalSearch: { key: '', label: '全局搜索' },
+    }));
+    w.localStorage.setItem('tizumark-shortcut-scheme', 'custom');
+    const loaded = ed.loadShortcuts();
+    assert.strictEqual(ed.shortcutScheme, 'vscode', 'custom 应迁移为 vscode');
+    assert.strictEqual(loaded.bold.key, 'Ctrl+Z', '旧自定义键位保留');
+    assert.strictEqual(loaded.globalSearch.key, '', '旧表 globalSearch 清空为用户自定义，应保留');
+    assert.strictEqual(w.localStorage.getItem('tizumark-shortcuts'), null, '旧全量表应删除');
   });
 });

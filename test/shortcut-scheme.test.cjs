@@ -34,6 +34,7 @@ function extractMethod(needle) {
 
 const getDefaultShortcuts = extractMethod('getDefaultShortcuts() {');
 const getShortcutPresets = extractMethod('getShortcutPresets() {');
+const buildSchemeShortcuts = extractMethod('buildSchemeShortcuts(name) {');
 const applyShortcutScheme = extractMethod('applyShortcutScheme(name) {');
 const previewShortcutScheme = extractMethod('previewShortcutScheme(name) {');
 const loadShortcutScheme = extractMethod('loadShortcutScheme() {');
@@ -48,6 +49,7 @@ function makeSchemeStub() {
     shortcutScheme: null,
     getDefaultShortcuts,
     getShortcutPresets,
+    buildSchemeShortcuts,
     saveShortcuts() {},
     saveShortcutScheme(name) { try { localStorage.setItem('tizumark-shortcut-scheme', name); } catch {} },
     renderShortcutsList() {},
@@ -207,6 +209,7 @@ function makePreviewStub() {
     shortcutScheme: null,
     getDefaultShortcuts,
     getShortcutPresets,
+    buildSchemeShortcuts,
     loadShortcuts() { calls.loadShortcuts++; return { bold: { key: 'Ctrl+Z', label: '加粗' } }; },
     saveShortcuts() { calls.saveShortcuts++; },
     saveShortcutScheme() { calls.saveScheme++; },

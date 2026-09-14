@@ -2320,7 +2320,7 @@ class MarkdownEditor {
       insertLink: { key: 'Ctrl+K', label: '插入链接' },
       exportPDF: { key: 'Ctrl+P', label: '导出 PDF' },
       fileSearch: { key: '', label: '文件搜索' },
-      globalSearch: { key: '', label: '全局搜索' },
+      globalSearch: { key: 'Ctrl+Shift+F', label: '全局搜索' },
       inlineCode: { key: 'Ctrl+`', label: '行内代码' },
       strikethrough: { key: 'Ctrl+Shift+X', label: '删除线' },
       codeBlock: { key: 'Ctrl+Shift+C', label: '代码块' },
@@ -2368,7 +2368,7 @@ class MarkdownEditor {
         nextTab:'Ctrl+Tab', prevTab:'Ctrl+Shift+Tab',
         bold:'', italic:'Ctrl+I', inlineCode:'Ctrl+`', insertLink:'Ctrl+K',
         insertMathBlock:'Ctrl+Shift+M', toggleTheme:'Ctrl+Shift+T',
-        fileSearch:'Ctrl+P', globalSearch:'Ctrl+Shift+F',
+        fileSearch:'Ctrl+P', globalSearch:'Ctrl+Shift+H',
         toggleSidebar:'Ctrl+B',
       },
       typora: {
@@ -2448,6 +2448,20 @@ class MarkdownEditor {
       // 此前中间版本用过 Ctrl+Shift+L，也一并迁移到 Ctrl+H。
       if (merged.crossSearch && (merged.crossSearch.key === 'Ctrl+Shift+F' || merged.crossSearch.key === 'Ctrl+Shift+L')) {
         merged.crossSearch = { ...merged.crossSearch, key: 'Ctrl+H' };
+      }
+      // 迁移：globalSearch 的旧默认键 Ctrl+Shift+F 被中文输入法（搜狗/微软拼音的
+      // 「简繁切换」）在 OS 层拦截，keydown 不会到达 DOM（跨文件搜索此前已因同一
+      // 原因迁离该键）；旧版本保存过快捷键的用户此项为空串。统一迁到 Ctrl+Shift+H。
+      // 打标记后不再迁移，尊重用户迁移后的再次自定义/清空。
+      if (merged.globalSearch
+          && (merged.globalSearch.key === '' || merged.globalSearch.key === 'Ctrl+Shift+F')
+          && !localStorage.getItem('tizumark-shortcut-globalsearch-migrated')
+          && !Object.values(merged).some(c => c && c.key === 'Ctrl+Shift+H')) {
+        merged.globalSearch = { ...merged.globalSearch, key: 'Ctrl+Shift+H' };
+        try {
+          localStorage.setItem('tizumark-shortcut-globalsearch-migrated', '1');
+          localStorage.setItem('tizumark-shortcuts', JSON.stringify(merged));
+        } catch {}
       }
       // 迁移：findReplace / previewFind 不再作为独立快捷键项（与 find 是同一功能），
       // 若用户有保存的键位则清理。
@@ -2699,15 +2713,18 @@ class MarkdownEditor {
     // 快捷键方案下拉
     const schemeSel = document.getElementById('shortcuts-scheme');
     if (schemeSel) {
-      schemeSel.addEventListener('change', (e) => {
+      schemeSel.addEventListener('change', async (e) => {
         const name = e.target.value;
         if (name === 'custom') {
           this.shortcutScheme = 'custom';
           this.saveShortcutScheme('custom');
           return;
         }
-        // 预置方案（含默认）：均为整体覆盖，一律先确认
-        if (window.confirm(this.t('schemeOverrideConfirm'))) {
+        // 预置方案（含默认）：均为整体覆盖，一律先确认。
+        // 用应用内确认对话框而非 window.confirm：Tauri WebView 把 window.confirm
+        // 路由到 plugin:dialog|confirm，未授权时直接抛 ACL 错误（见快捷键方案切换报错）。
+        const ok = await this.showConfirmDialog(this.t('shortcuts'), this.t('schemeOverrideConfirm'));
+        if (ok) {
           this.applyShortcutScheme(name);
           e.target.value = this.shortcutScheme;
         } else {
@@ -3877,16 +3894,28 @@ class MarkdownEditor {
     document.addEventListener('keydown', (e) => {
       if (this.handleShortcutRecording(e)) return;
 
+      // 禁用 Insert 覆写模式：CM5 默认键表绑定 Insert→toggleOverwrite，Chromium 对
+      // contenteditable 也有原生覆写行为。误触 Insert 后光标变块状、输入会覆盖旧内容，
+      // 用户难以察觉且常误以为是 bug，故全局禁用（Insert 在本应用无其他功能）。
+      // 放在快捷键录制之后，录制场景仍可录制 Insert 键。
+      if (e.key === 'Insert') {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
       // 文件树右键菜单快捷键：_fileTreeCtx 存在时，F2/Delete/Ctrl+X/C/V 对其生效。
-      // 编辑器聚焦时 Ctrl+X/C/V 让 CodeMirror 处理；F2/Delete 始终对文件树生效（编辑器不占用）。
+      // 焦点在编辑器（.CodeMirror 的 contenteditable 不属于 input/textarea/select）时
+      // 整块跳过：让 Delete 走编辑器正常删除字符逻辑，否则点击过文件树后残留的
+      // _fileTreeCtx 会让编辑器里按 Delete 误弹「删除文档」确认框。
       if (this._fileTreeCtx) {
-        const inEditor = e.target.closest('.CodeMirror');
-        const inInput = e.target.closest('input, textarea, select');
-        if (!inInput) {
+        const inEditor = e.target.closest && e.target.closest('.CodeMirror');
+        const inInput = e.target.closest && e.target.closest('input, textarea, select');
+        if (!inInput && !inEditor) {
           const ctrl = e.ctrlKey || e.metaKey;
           if (e.key === 'F2') { e.preventDefault(); this.fileTreeRename(); return; }
           if (e.key === 'Delete') { e.preventDefault(); this.fileTreeDelete(); return; }
-          if (ctrl && !e.shiftKey && !e.altKey && !inEditor) {
+          if (ctrl && !e.shiftKey && !e.altKey) {
             const k = e.key.toLowerCase();
             if (k === 'x') { e.preventDefault(); this.fileTreeCut(); return; }
             if (k === 'c') { e.preventDefault(); this.fileTreeCopy(); return; }
@@ -3894,12 +3923,12 @@ class MarkdownEditor {
           }
           if (ctrl && e.altKey && !e.shiftKey && e.key.toLowerCase() === 'n') {
             e.preventDefault();
-            if (this._fileTreeCtx.isDir) this.fileTreeNewFile();
+            this.fileTreeNewFile(); // 目录内新建；右键文件则同级新建（入口内部处理）
             return;
           }
           if (ctrl && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
             e.preventDefault();
-            if (this._fileTreeCtx.isDir) this.fileTreeNewFolder();
+            this.fileTreeNewFolder();
             return;
           }
         }
@@ -3955,13 +3984,9 @@ class MarkdownEditor {
           return;
         }
 
-        // Block ALL other Ctrl shortcuts from triggering browser defaults
-        e.preventDefault();
-
-        // Handle TizuMark's global shortcuts (work even when editor is not focused)
         // 主键用 e.code（物理键位）推导，规避某些浏览器/环境下 Ctrl+Shift+字母的
         // e.key 取值异常（如被当成其它字符），保证 keyStr 与 globalShortcutLookup
-        // 中存储的 'Ctrl+Shift+F' 等稳定匹配。
+        // 中存储的 'Ctrl+Shift+H' 等稳定匹配。
         let baseKey;
         if (e.code && /^Key[A-Za-z]$/.test(e.code)) baseKey = e.code.slice(3).toUpperCase();
         else if (e.code && /^Digit[0-9]$/.test(e.code)) baseKey = e.code.slice(5);
@@ -3973,16 +3998,52 @@ class MarkdownEditor {
         gParts.push(baseKey);
         const keyStr = gParts.join('+');
         const gHandler = this.globalShortcutLookup?.[keyStr];
-        // 全局快捷键在【捕获阶段】统一派发：命中即 stopPropagation，阻断事件继续
-        // 冒泡到 CodeMirror（及其默认键位 search.js 的 Shift-Ctrl-F→replace）或
-        // Tauri WebView 的原生处理，确保编辑器有焦点时也能且仅由本处触发一次。
-        // （CM 的 extraKeys 仍对相关键置 false 作为兜底。）
+
+        // 全局快捷键在【捕获阶段】统一派发：命中即 preventDefault + stopPropagation，
+        // 阻断浏览器默认行为及事件继续冒泡到 CodeMirror（及其默认键位 search.js 的
+        // Shift-Ctrl-F→replace）或 Tauri WebView 的原生处理，确保编辑器有焦点时
+        // 也能且仅由本处触发一次。（CM 的 extraKeys 仍对相关键置 false 作为兜底。）
         if (gHandler) {
+          e.preventDefault();
           e.stopPropagation();
           gHandler();
+          return;
         }
+
+        // Ctrl + '=' / '+'（Shift+=）/ '-' / '0'（含小键盘）：WebView 整页缩放，
+        // 与其他 webview 应用一致。此前这里对所有 Ctrl 组合无条件 preventDefault，
+        // 把 WebView 原生缩放加速键一并拦死（Ctrl+/- 缩放失效的根因）。
+        // 现在未绑定应用快捷键时：Tauri 环境调 set_webview_zoom 显式缩放；
+        // 浏览器环境不 preventDefault，放行浏览器原生缩放。
+        if (!e.altKey && ['=', '+', '-', '0'].includes(key)) {
+          if (window.__TAURI__ && window.__TAURI__.core) {
+            e.preventDefault();
+            this._applyWebviewZoom(key === '-' ? -1 : key === '0' ? 0 : 1);
+          }
+          return;
+        }
+
+        // Block ALL other Ctrl shortcuts from triggering browser defaults
+        e.preventDefault();
       }
     }, true);
+  }
+
+  // WebView 整页缩放（Ctrl+= / Ctrl+- / Ctrl+0）。dir：1 放大 / -1 缩小 / 0 复位。
+  // 步进 0.1，范围 [0.3, 3]，经 Tauri 核心命令 set_webview_zoom 设置，
+  // Windows(WebView2) / Linux(WebKitGTK) / macOS(WKWebView) 行为一致。
+  // 注意：_webviewZoom 是应用侧推算值；WebView2 原生 Ctrl+滚轮缩放内核不会回报，
+  // 二者可能失同步，复位/累计均以本值为准。
+  async _applyWebviewZoom(dir) {
+    const cur = this._webviewZoom ?? 1;
+    const next = dir === 0
+      ? 1
+      : Math.min(3, Math.max(0.3, Math.round((cur + dir * 0.1) * 10) / 10));
+    if (next === cur) return;
+    this._webviewZoom = next;
+    try {
+      await invoke('plugin:webview|set_webview_zoom', { value: next });
+    } catch (e) { /* set_webview_zoom 不可用时静默忽略 */ }
   }
 
   initResizer() {
@@ -6095,8 +6156,9 @@ class MarkdownEditor {
       const item = menu.querySelector(`[data-action="${action}"]`);
       if (item) item.classList.toggle('disabled', disabled);
     };
-    setDisabled('file-new-file', !isDir);
-    setDisabled('file-new-folder', !isDir);
+    // 新建文件/文件夹：目录内新建或文件同级新建均可用，不再仅限目录
+    setDisabled('file-new-file', !ctx);
+    setDisabled('file-new-folder', !ctx);
     setDisabled('file-paste', !isDir || !this._fileClipboard);
     if (!ctx) {
       ['file-cut', 'file-copy', 'file-rename', 'file-copy-path', 'file-delete'].forEach(a => setDisabled(a, true));
@@ -6179,9 +6241,16 @@ class MarkdownEditor {
     } catch { return false; }
   }
 
-  async fileTreeNewFile() {
+  // 新建文件/文件夹的目标目录：右键目录 → 目录内；右键文件 → 其所在目录（同级新建）
+  fileTreeTargetDir() {
     const ctx = this._fileTreeCtx;
-    if (!ctx || !ctx.isDir) return;
+    if (!ctx) return '';
+    return ctx.isDir ? ctx.path : this.parentPath(ctx.path);
+  }
+
+  async fileTreeNewFile() {
+    const dir = this.fileTreeTargetDir();
+    if (!dir) return;
     const name = await this.showPromptDialog({
       title: this.t('fileNewFile'),
       message: this.t('newFileNamePrompt'),
@@ -6190,21 +6259,23 @@ class MarkdownEditor {
     if (name === null) return;
     const err = this.validateFileName(name);
     if (err) { this.showToast(err, 'danger'); return; }
-    const newPath = this.joinPath(ctx.path, name);
+    const newPath = this.joinPath(dir, name);
     if (await this.pathExists(newPath)) { this.showToast(this.t('nameExists'), 'danger'); return; }
     try {
       await invoke('write_file', { path: newPath, content: '' });
-      this.expandedFolders.add(ctx.path);
+      this.expandedFolders.add(dir);
       this.renderFolderTree();
       this.setStatus(this.t('fileNewFile') + ': ' + name);
+      // 新建后自动打开（编辑模式下直接进入可编辑状态）
+      await this.openFilePath(newPath);
     } catch (e) {
       this.showToast(this.t('fileCreateFailed') + ': ' + e, 'danger');
     }
   }
 
   async fileTreeNewFolder() {
-    const ctx = this._fileTreeCtx;
-    if (!ctx || !ctx.isDir) return;
+    const dir = this.fileTreeTargetDir();
+    if (!dir) return;
     const name = await this.showPromptDialog({
       title: this.t('fileNewFolder'),
       message: this.t('newFolderNamePrompt'),
@@ -6213,11 +6284,11 @@ class MarkdownEditor {
     if (name === null) return;
     const err = this.validateFileName(name);
     if (err) { this.showToast(err, 'danger'); return; }
-    const newPath = this.joinPath(ctx.path, name);
+    const newPath = this.joinPath(dir, name);
     if (await this.pathExists(newPath)) { this.showToast(this.t('nameExists'), 'danger'); return; }
     try {
       await invoke('ensure_dir', { path: newPath });
-      this.expandedFolders.add(ctx.path);
+      this.expandedFolders.add(dir);
       this.renderFolderTree();
       this.setStatus(this.t('fileNewFolder') + ': ' + name);
     } catch (e) {
@@ -8912,7 +8983,14 @@ input[type="checkbox"]:checked::after { display: none !important; }
       });
     }
 
-    document.addEventListener('click', () => this.hideAllContextMenus());
+    document.addEventListener('click', (e) => {
+      this.hideAllContextMenus();
+      // 点击文件树以外区域时清除文件树上下文，避免残留的 _fileTreeCtx 让后续
+      // F2/Delete/Ctrl+X/C/V 等快捷键误对早已不相关的树节点生效
+      if (this._fileTreeCtx && !(e.target && e.target.closest && e.target.closest('#folder-tree'))) {
+        this._fileTreeCtx = null;
+      }
+    });
     document.addEventListener('contextmenu', (e) => {
       if (e.target.closest('input:not([type="file"]):not([type="checkbox"]):not([type="radio"]), textarea, select') &&
           !e.target.closest('#editor-wrapper') && !e.target.closest('#preview-wrapper')) {

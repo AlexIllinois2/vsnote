@@ -871,6 +871,7 @@ class MarkdownEditor {
     this.initEditor();
     this.applyShortcuts();
     this.initEventListeners();
+    this._restoreWebviewZoom();
     this.initResizer();
     this.applyPreviewPaneWidth();
     this.initFindReplace();
@@ -3970,6 +3971,22 @@ class MarkdownEditor {
           this.clearPreviewHighlight();
           return;
         }
+        // 通用兜底：Esc 关闭当前可见弹窗，等价点击其「取消/关闭」按钮以复用既有清理逻辑
+        // （确认/保存/输入等弹窗 resolve(false/null)，搜索弹窗清高亮），无按钮则直接隐藏。
+        // 有专属 Esc 处理的弹窗（about/shortcuts/查找栏及各搜索输入框）已在上方处理或随后
+        // 自行处理，此处兜底覆盖其余：settings/update/insert-*/close-confirm 等。
+        // 叠加场景（如 settings 内触发 confirm）取 DOM 序靠前者——确认/保存/输入类
+        // 小弹窗在 HTML 中位于 settings/shortcuts 之前，恰好即语义上的最上层。
+        // eula-dialog 例外：必须用户明确点「我知道了」，不允许 Esc 跳过。
+        e.preventDefault();
+        e.stopPropagation();
+        const overlays = Array.from(document.querySelectorAll('.dialog-overlay:not(.hidden)'))
+          .filter(el => el.id !== 'eula-dialog');
+        if (!overlays.length) return;
+        const top = overlays[0];
+        const btn = top.querySelector('.dialog-close, [id$="-cancel"], [id$="-cancel-btn"]');
+        if (btn) btn.click();
+        else top.classList.add('hidden');
       }
 
       const ctrl = e.ctrlKey || e.metaKey;
@@ -4041,9 +4058,22 @@ class MarkdownEditor {
       : Math.min(3, Math.max(0.3, Math.round((cur + dir * 0.1) * 10) / 10));
     if (next === cur) return;
     this._webviewZoom = next;
+    // 持久化到 localStorage，重启后由 _restoreWebviewZoom 恢复（否则缩放只在当次会话有效）
+    try { localStorage.setItem('tizumark-webview-zoom', String(next)); } catch {}
     try {
       await invoke('plugin:webview|set_webview_zoom', { value: next });
     } catch (e) { /* set_webview_zoom 不可用时静默忽略 */ }
+  }
+
+  // 启动时恢复上次会话的 WebView 缩放（Ctrl+/- 调整重启后不再丢失）。
+  // 注意：WebView2 原生 Ctrl+滚轮缩放内核不回报，恢复值以应用侧记录为准（与既有限制一致）。
+  _restoreWebviewZoom() {
+    try {
+      const v = parseFloat(localStorage.getItem('tizumark-webview-zoom'));
+      if (!Number.isFinite(v) || v === 1 || v < 0.3 || v > 3) return;
+      this._webviewZoom = v;
+      Promise.resolve(invoke('plugin:webview|set_webview_zoom', { value: v })).catch(() => {});
+    } catch { /* localStorage 或 invoke 不可用时跳过 */ }
   }
 
   initResizer() {

@@ -1514,6 +1514,20 @@ body.is-resizing .side-btn {
 
 [data-theme="dark"] .cm-s-material-darker.CodeMirror {
   background-color: var(--bg-primary);
+  /* 正文前景对齐 --text-primary（≈#d1d2d6，与 VSCode Dark+ 正文 #d4d4d4 同档），
+     替代 material-darker 原生 #EEFFFF 近纯白——对比度过高，长时间码字易疲劳，
+     且与预览面板正文（--text-primary）不一致 */
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .cm-s-material-darker .cm-variable-2 {
+  color: var(--text-primary);
+}
+
+[data-theme="light"] #editor-wrapper .CodeMirror {
+  /* 亮色正文对齐 VSCode Light+（#333 on 白，≈12.6:1）：CM 默认主题纯黑 on 白
+     对比度 21:1 过高。限定 data-theme="light" 作用域，避免干扰暗色主题覆盖 */
+  color: #333;
 }
 
 [data-theme="dark"] .cm-s-material-darker .CodeMirror-gutters {

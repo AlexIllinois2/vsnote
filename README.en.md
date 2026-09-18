@@ -82,7 +82,7 @@ The world isn't short of Markdown editors. But most fall into one of two camps: 
 | Folder workspace (sidebar file tree) | Font size, line height, max width | File association: .md, .markdown |
 | Cross-file search (regex + directory) | Tab width, word wrap toggle | Recently opened files list |
 | Tab drag-to-reorder | Code block line numbers / auto-wrap | Unsaved-state markers + close prompt |
-| Drag & drop, batch file open | Fully rebindable shortcuts | System tray (hideable) + close behavior |
+| Drag & drop, batch file open | Fully rebindable shortcuts | Close behavior options |
 | Free-drag split pane ratio | Import custom fonts (editor & preview separately) | Status bar word & char count |
 | Find in preview (regex) + copy as HTML | 5 color schemes + 2 font schemes | External-change detection & reload prompt |
 | Soft line break toggle | 中文 / English UI toggle | |

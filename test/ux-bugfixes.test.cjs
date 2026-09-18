@@ -120,6 +120,40 @@ test('右键文件 → 新建文件创建为同级且自动打开', async () => 
   });
 });
 
+test('新建文件无后缀时自动补 .md；已有后缀保持不变', async () => {
+  const writes = [];
+  await withEditor({
+    captureInitErr: true,
+    invokeImpl: (cmd, args) => {
+      if (cmd === 'write_file') { writes.push(args); return undefined; }
+      if (cmd === 'list_dir') return [{ name: 'a.md', is_dir: false }];
+      if (cmd === 'read_file') return '';
+      return undefined;
+    },
+  }, async (w, ed) => {
+    ed._fileTreeCtx = { path: '/ws/a.md', isDir: false, nodeEl: null };
+
+    // 无后缀 → 自动补 .md
+    ed.showPromptDialog = async () => '日记';
+    await ed.fileTreeNewFile();
+    assert.strictEqual(writes.length, 1, '无后缀场景应创建一个文件');
+    assert.strictEqual(writes[0].path, '/ws/日记.md', '无后缀的名称应自动补 .md');
+    assert.strictEqual(ed.activeTab.filePath, '/ws/日记.md', '补后缀后应打开 .md 文件');
+
+    // 已有后缀 → 保持不变
+    ed.showPromptDialog = async () => 'notes.txt';
+    await ed.fileTreeNewFile();
+    assert.strictEqual(writes.length, 2, '有后缀场景应创建一个文件');
+    assert.strictEqual(writes[1].path, '/ws/notes.txt', '已有后缀的名称不应被改写');
+
+    // 含点号的名称视为已有后缀 → 保持不变
+    ed.showPromptDialog = async () => 'v1.2 笔记';
+    await ed.fileTreeNewFile();
+    assert.strictEqual(writes.length, 3, '含点号场景应创建一个文件');
+    assert.strictEqual(writes[2].path, '/ws/v1.2 笔记', '含点号的名称不应再补 .md');
+  });
+});
+
 test('Ctrl+= / Ctrl+- / Ctrl+0 触发 WebView 缩放（Tauri set_webview_zoom）', async () => {
   const zoomCalls = [];
   await withEditor({

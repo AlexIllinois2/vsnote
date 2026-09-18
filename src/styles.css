@@ -2693,6 +2693,27 @@ body.is-resizing .side-btn {
   background-color: var(--bg-secondary);
 }
 
+/* 文件树拖拽移动：拖拽幻影 + 落点高亮 */
+.tree-drag-ghost {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+  padding: 2px 10px;
+  border-radius: 4px;
+  background: var(--accent-color);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.tree-row.tree-drop-target {
+  outline: 1px dashed var(--accent-color);
+  outline-offset: -1px;
+  border-radius: 4px;
+  background-color: var(--bg-secondary);
+}
+
 .tree-arrow {
   flex: 0 0 auto;
   display: inline-flex;

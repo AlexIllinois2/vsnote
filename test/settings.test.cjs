@@ -35,7 +35,6 @@ test('settings: defaultSettings 返回完整默认配置', async () => {
     assert.strictEqual(d.codeLineNumbers, false);
     assert.strictEqual(d.codeWrap, false);
     assert.strictEqual(d.softBreaks, true);
-    assert.strictEqual(d.showTrayIcon, true);
     assert.strictEqual(d.closeAction, 'ask');
     assert.strictEqual(d.toolbarCollapsed, false);
     assert.strictEqual(d.sidebarHidden, false);

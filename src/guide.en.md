@@ -362,8 +362,7 @@ All options are available in `File → Settings`:
 | Soft Line Break (Enter = newline) | On / Off | When on, a single Enter creates a line break; when off, CommonMark standard applies (Enter = space) |
 | Image Storage Mode | Copy to assets / Base64 Embed | See Image Management |
 | Image Asset Path | Relative / Absolute | See Image Management |
-| Close Behavior | Ask / Quit / Minimize to Tray | What happens when closing the last window. Minimize to tray lets you bring the window back via the tray icon |
-| Show Tray Icon | On / Off | Show or hide the system tray icon |
+| Close Behavior | Ask / Quit | What happens when closing the last window |
 
 ### Custom Fonts
 

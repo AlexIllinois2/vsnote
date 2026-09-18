@@ -144,6 +144,7 @@ const I18N = {
     closeTab: '关闭',
     closeOther: '关闭其他',
     closeAll: '关闭所有',
+    noOpenFiles: '未打开任何文件',
     copyFilePath: '复制文件路径',
     // 文件树右键菜单
     fileNewFile: '新建文件',
@@ -164,6 +165,8 @@ const I18N = {
     fileCutDone: '已剪切到剪贴板',
     fileCopyDone: '已复制到剪贴板',
     filePasteDone: '已粘贴',
+    fileMoveDone: '已移动',
+    fileMoveFailed: '移动失败',
     fileDeleteFailed: '删除失败',
     fileCreateFailed: '创建失败',
     fileRenameFailed: '重命名失败',
@@ -213,13 +216,10 @@ const I18N = {
     scrollSync: '滚动同步',
     softBreaks: '软换行（回车即换行）',
     softBreaksHint: '开启后，段落内单个回车直接换行（与「空格+空格+回车」一致），更符合日常写作习惯，也便于从其他笔记软件迁移。关闭则恢复 CommonMark 标准（回车视为空格）。',
-    showTrayIcon: '显示托盘图标',
-    showTrayIconHint: '关闭后隐藏系统托盘图标；此时关闭窗口会直接退出应用（否则无法通过托盘恢复窗口）。',
     tabSizeHint: '每按一次 Tab 键缩进几个空格。列表要往里缩一级（做子列表）也靠这个宽度，建议用 4，最稳。',
     closeAction: '关闭窗口时',
     closeActionAsk: '每次询问',
     closeActionQuit: '退出应用',
-    closeActionMinimize: '最小化到托盘',
     followSystem: '跟随系统',
     resetDefault: '恢复默认',
     done: '完成',
@@ -523,6 +523,7 @@ const I18N = {
     closeTab: 'Close',
     closeOther: 'Close Others',
     closeAll: 'Close All',
+    noOpenFiles: 'No files open',
     copyFilePath: 'Copy File Path',
     // 文件树右键菜单
     fileNewFile: 'New File',
@@ -543,6 +544,8 @@ const I18N = {
     fileCutDone: 'Cut to clipboard',
     fileCopyDone: 'Copied to clipboard',
     filePasteDone: 'Pasted',
+    fileMoveDone: 'Moved',
+    fileMoveFailed: 'Move failed',
     fileDeleteFailed: 'Delete failed',
     fileCreateFailed: 'Create failed',
     fileRenameFailed: 'Rename failed',
@@ -581,13 +584,10 @@ const I18N = {
     scrollSync: 'Scroll Sync',
     softBreaks: 'Soft Line Break (Enter = newline)',
     softBreaksHint: 'When enabled, a single Enter inside a paragraph creates a line break (same as "two spaces + Enter"), matching everyday writing and easing migration from other note apps. When disabled, CommonMark standard applies (Enter is treated as a space).',
-    showTrayIcon: 'Show tray icon',
-    showTrayIconHint: 'When disabled, the system tray icon is hidden; closing the window then quits the app directly (otherwise the window could not be restored via the tray).',
     tabSizeHint: 'How many spaces a Tab press indents. Indenting a list one level (to make a sub-list) also uses this width; 4 is recommended for the safest nesting.',
     closeAction: 'On window close',
     closeActionAsk: 'Ask every time',
     closeActionQuit: 'Quit app',
-    closeActionMinimize: 'Minimize to tray',
     followSystem: 'Follow System',
     resetDefault: 'Reset Default',
     done: 'Done',
@@ -876,8 +876,8 @@ class MarkdownEditor {
     this.initScrollTopBtn();
     this.initExternalLinks();
     this.initDragDrop();
+    this.initFileTreeDragDrop();
     this.initSettings();
-    this.applyWindowBehavior();
     this.initShortcutsDialog();
     this.initCrossSearch();
     this.initFileSearchModule();
@@ -1417,7 +1417,6 @@ class MarkdownEditor {
       codeLineNumbers: false,
       codeWrap: false,
       softBreaks: true,
-      showTrayIcon: true,
       closeAction: 'ask',
       toolbarCollapsed: false,
       sidebarHidden: false,
@@ -1597,12 +1596,6 @@ class MarkdownEditor {
       this.settings.softBreaks = e.target.checked;
       this.saveSettings();
       this.updatePreview();
-    });
-    document.getElementById('set-show-tray-icon').checked = s.showTrayIcon !== false;
-    document.getElementById('set-show-tray-icon').addEventListener('change', (e) => {
-      this.settings.showTrayIcon = e.target.checked;
-      this.saveSettings();
-      this.applyWindowBehavior();
     });
     document.getElementById('set-close-action').value = s.closeAction || 'ask';
     document.getElementById('set-close-action').addEventListener('change', (e) => {
@@ -1920,18 +1913,6 @@ class MarkdownEditor {
     // 更新 mermaid 字体
     if (typeof mermaid !== 'undefined') {
       this.rerenderMermaid();
-    }
-  }
-
-  // 同步托盘显隐状态到 Rust 后端
-  async applyWindowBehavior() {
-    const showTray = this.settings.showTrayIcon !== false;
-    try {
-      if (typeof invoke === 'function') {
-        await invoke('set_window_behavior', { showTray });
-      }
-    } catch (err) {
-      console.warn('applyWindowBehavior failed', err);
     }
   }
 
@@ -2369,6 +2350,7 @@ class MarkdownEditor {
         insertMathBlock:'Ctrl+Shift+M', toggleTheme:'Ctrl+Shift+T',
         fileSearch:'Ctrl+P', globalSearch:'Ctrl+Shift+F',
         toggleSidebar:'Ctrl+B',
+        moveLineUp:'Alt+ArrowUp', moveLineDown:'Alt+ArrowDown',
       },
       typora: {
         newFile:'Ctrl+N', openFile:'Ctrl+O', saveFile:'Ctrl+S', closeTab:'Ctrl+W',
@@ -2380,12 +2362,14 @@ class MarkdownEditor {
         insertImage:'Ctrl+Shift+I', insertMathBlock:'Ctrl+Shift+M',
         insertH1:'Ctrl+1', insertH2:'Ctrl+2', insertH3:'Ctrl+3', insertH4:'Ctrl+4',
         insertH5:'Ctrl+5', insertH6:'Ctrl+6',
+        moveLineUp:'Alt+ArrowUp', moveLineDown:'Alt+ArrowDown',
       },
       sublime: {
         newFile:'Ctrl+N', openFile:'Ctrl+O', saveFile:'Ctrl+S', saveAs:'Ctrl+Shift+S',
         closeTab:'Ctrl+W', find:'Ctrl+F', crossSearch:'Ctrl+H',
         nextTab:'Ctrl+Tab', prevTab:'Ctrl+Shift+Tab',
         exportPDF:'Ctrl+P', toggleTheme:'Ctrl+Shift+T',
+        moveLineUp:'Alt+ArrowUp', moveLineDown:'Alt+ArrowDown',
       },
     };
   }
@@ -3071,6 +3055,7 @@ class MarkdownEditor {
     }, true);  // capture：先于 CM 内部 mousewheel 监听拦截
 
     this.cm.on('change', () => {
+      if (!this.activeTab) return; // 无标签页空状态：不写回内容
       this.activeTab.content = this.cm.getValue();
       this.updateTabDisplay();
       // 大文档滑动窗口模式：打字时把窗口焦点同步到光标当前行（0-based），
@@ -3091,6 +3076,7 @@ class MarkdownEditor {
     });
 
     this.cm.on('cursorActivity', () => {
+      if (!this.activeTab) return; // 无标签页空状态：不写回光标
       const cursor = this.cm.getCursor();
       this.activeTab.cursorPos = cursor;
       this.cursorPosition.textContent = this.t('cursorPos', { line: cursor.line + 1, col: cursor.ch + 1 });
@@ -3104,6 +3090,7 @@ class MarkdownEditor {
 
     // 编辑器滚动 → 同步预览（demo 的 onScroll 思路）
     this.cm.on('scroll', () => {
+      if (!this.activeTab) return; // 无标签页空状态：不写回滚动位置
       const container = document.querySelector('.editor-container');
       // 编辑器被隐藏（纯预览模式 / 编辑器折叠）时 getScrollInfo().top 恒为 0，
       // 若写回 scrollPos 会把已保存位置清零，导致切回编辑跳顶部。仅当编辑器可见才更新快照。
@@ -3303,12 +3290,15 @@ class MarkdownEditor {
     this.previewWindow = null;
     this._beginPaneLoad();
     try {
+      // 从无标签页空状态切到首个文件时，activeTab 为 undefined，无旧标签内容需回写
       const oldTab = this.activeTab;
-      oldTab.content = this.cm.getValue();
-      oldTab.cursorPos = this.cm.getCursor();
-      oldTab.scrollPos = { top: this.cm.getScrollInfo().top, left: this.cm.getScrollInfo().left };
-      oldTab.previewScrollTop = this.preview.scrollTop;
-      oldTab.fontSize = parseInt(this.cm.getWrapperElement().style.fontSize, 10) || this.settings.fontSize;
+      if (oldTab) {
+        oldTab.content = this.cm.getValue();
+        oldTab.cursorPos = this.cm.getCursor();
+        oldTab.scrollPos = { top: this.cm.getScrollInfo().top, left: this.cm.getScrollInfo().left };
+        oldTab.previewScrollTop = this.preview.scrollTop;
+        oldTab.fontSize = parseInt(this.cm.getWrapperElement().style.fontSize, 10) || this.settings.fontSize;
+      }
 
       this.activeTabIndex = index;
       const newTab = this.activeTab;
@@ -3328,6 +3318,7 @@ class MarkdownEditor {
       const restoreScroll = newTab.scrollPos || { top: 0, left: 0 };
       const restorePreviewTop = newTab.previewScrollTop || 0;
 
+      this.cm.setOption('readOnly', false); // 从无标签页空状态恢复可编辑
       this.cm.setValue(newTab.content || '');
       clearTimeout(this.debounceTimer);
       this.cm.setCursor(restoreCursor);
@@ -3408,9 +3399,9 @@ class MarkdownEditor {
     if (this._externalQueue) this._externalQueue = this._externalQueue.filter(t => t !== tab);
     this.tabs.splice(removeIndex, 1);
     if (this.tabs.length === 0) {
-      this.tabs.push(new Tab(`${this.t('untitled')}${this.untitledCounter++}`));
-      this.activeTabIndex = 0;
-      this.cm.setValue('');
+      // 所有文件已关闭：进入无标签页空状态，不再自动新建空文档
+      this.activeTabIndex = -1;
+      this._enterNoTabState();
     } else {
       if (removeIndex < this.activeTabIndex) {
         this.activeTabIndex--;
@@ -3420,12 +3411,25 @@ class MarkdownEditor {
     }
     this.updateTabBar();
     if (this.tabs.length > 0) {
+      this.cm.setOption('readOnly', false);
       await this.ensureTabLoaded(this.activeTab);
       this.cm.setValue(this.activeTab.content || '');
       this.cm.setCursor(this.activeTab.cursorPos || { line: 0, ch: 0 });
       this.updatePreview();
     }
     this.saveSession();
+  }
+
+  // 无标签页空状态：清空编辑器并置为只读不可聚焦，等下次打开/新建文件时恢复可编辑
+  _enterNoTabState() {
+    this.cm.setOption('readOnly', true);
+    this.cm.setValue('');
+    this.cm.clearHistory();
+    this.preview.innerHTML = '';
+    this.cursorPosition.textContent = '';
+    this.updateWordCount();
+    this.updateOutline();
+    this.setStatus(this.t('noOpenFiles'));
   }
 
   // ---- 标签页拖拽排序 ----
@@ -6307,15 +6311,17 @@ class MarkdownEditor {
       placeholder: 'note.md'
     });
     if (name === null) return;
-    const err = this.validateFileName(name);
+    // 无后缀时自动补 .md（含点号的名称视为已有后缀，保持不变）
+    const finalName = name.includes('.') ? name : name + '.md';
+    const err = this.validateFileName(finalName);
     if (err) { this.showToast(err, 'danger'); return; }
-    const newPath = this.joinPath(dir, name);
+    const newPath = this.joinPath(dir, finalName);
     if (await this.pathExists(newPath)) { this.showToast(this.t('nameExists'), 'danger'); return; }
     try {
       await invoke('write_file', { path: newPath, content: '' });
       this.expandedFolders.add(dir);
       this.renderFolderTree();
-      this.setStatus(this.t('fileNewFile') + ': ' + name);
+      this.setStatus(this.t('fileNewFile') + ': ' + finalName);
       // 新建后自动打开（编辑模式下直接进入可编辑状态）
       await this.openFilePath(newPath);
     } catch (e) {
@@ -6430,16 +6436,8 @@ class MarkdownEditor {
       return;
     }
     const srcName = this.baseName(clip.path);
-    let dstPath = this.joinPath(ctx.path, srcName);
     // 同名冲突时加 (n) 后缀
-    if (await this.pathExists(dstPath)) {
-      const dot = srcName.lastIndexOf('.');
-      const base = dot > 0 ? srcName.substring(0, dot) : srcName;
-      const ext = dot > 0 ? srcName.substring(dot) : '';
-      let i = 1;
-      while (await this.pathExists(this.joinPath(ctx.path, `${base} (${i})${ext}`))) i++;
-      dstPath = this.joinPath(ctx.path, `${base} (${i})${ext}`);
-    }
+    const dstPath = await this._uniqueDestPath(ctx.path, srcName);
     try {
       if (clip.op === 'cut') {
         await invoke('move_path', { from: clip.path, to: dstPath });
@@ -6471,7 +6469,149 @@ class MarkdownEditor {
     });
   }
 
+  // 目标目录内生成不冲突的目标路径：同名时自动加 (n) 后缀
+  async _uniqueDestPath(dir, name) {
+    let dst = this.joinPath(dir, name);
+    if (!(await this.pathExists(dst))) return dst;
+    const dot = name.lastIndexOf('.');
+    const base = dot > 0 ? name.substring(0, dot) : name;
+    const ext = dot > 0 ? name.substring(dot) : '';
+    let i = 1;
+    while (await this.pathExists(this.joinPath(dir, `${base} (${i})${ext}`))) i++;
+    return this.joinPath(dir, `${base} (${i})${ext}`);
+  }
+
+  // 拖拽移动文件(夹)：target 为目录时移入其内，为文件时移到其所在目录
+  async moveTreeEntry(fromPath, fromIsDir, targetPath, targetIsDir) {
+    const targetDir = targetIsDir ? targetPath : this.parentPath(targetPath);
+    const normFrom = fromPath.replace(/[\/\\]+$/, '');
+    const normDir = targetDir.replace(/[\/\\]+$/, '');
+    // 安全检查：不能移动到自身或自身子目录内
+    if (normDir === normFrom
+        || normDir.startsWith(normFrom + '/')
+        || normDir.startsWith(normFrom + '\\')) {
+      this.showToast(this.t('pasteIntoSelf'), 'danger');
+      return;
+    }
+    if (this.parentPath(fromPath) === targetDir) return; // 原地放置，无需移动
+    const name = this.baseName(fromPath);
+    try {
+      const dst = await this._uniqueDestPath(targetDir, name);
+      await invoke('move_path', { from: fromPath, to: dst });
+      // 同步更新打开的标签页（直接命中 + 被移动文件夹内的文件）
+      this.tabs.forEach(t => {
+        if (!t.filePath) return;
+        if (t.filePath === fromPath) {
+          t.filePath = dst;
+          t.name = this.baseName(dst);
+        } else if (t.filePath.startsWith(fromPath + '/') || t.filePath.startsWith(fromPath + '\\')) {
+          t.filePath = dst + t.filePath.slice(fromPath.length);
+        }
+      });
+      // 被移动目录自身的展开状态迁移到新路径
+      if (fromIsDir && this.expandedFolders) {
+        const remapped = new Set();
+        for (const p of this.expandedFolders) {
+          if (p === fromPath) remapped.add(dst);
+          else if (p.startsWith(fromPath + '/')) remapped.add(dst + p.slice(fromPath.length));
+          else remapped.add(p);
+        }
+        this.expandedFolders = remapped;
+      }
+      this.expandedFolders.add(targetDir);
+      this.updateTabBar();
+      this.renderFolderTree();
+      this.saveSession();
+      this.setStatus(this.t('fileMoveDone') + ': ' + name + ' → ' + targetDir);
+    } catch (e) {
+      this.showToast(this.t('fileMoveFailed') + ': ' + e, 'danger');
+    }
+  }
+
+  // 文件树鼠标拖拽移动（用 mousedown/mousemove/mouseup 实现：Tauri dragDropEnabled
+  // 会接管原生 HTML5 DnD，标签页拖拽排序同因改用指针事件）
+  initFileTreeDragDrop() {
+    const treeEl = document.getElementById('folder-tree');
+    if (!treeEl) return;
+
+    // 捕获阶段吞掉拖拽结束后的那次 click，避免误触发打开文件/折叠目录
+    treeEl.addEventListener('click', (e) => {
+      if (this._treeDragSuppressClick) {
+        this._treeDragSuppressClick = false;
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    }, true);
+
+    treeEl.addEventListener('mousedown', (e) => {
+      if (e.button !== 0 || !this.workspaceFolder) return;
+      const row = e.target.closest('.tree-row');
+      const node = row && row.closest('.tree-node');
+      if (!node || !node.dataset.path) return;
+      const label = row.querySelector('.tree-label');
+      this._treeDragState = {
+        fromPath: node.dataset.path,
+        fromIsDir: node.classList.contains('tree-folder'),
+        name: label ? label.textContent : '',
+        startX: e.clientX, startY: e.clientY,
+        active: false, ghost: null, target: null,
+      };
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      const st = this._treeDragState;
+      if (!st) return;
+      if (!st.active) {
+        // 位移超过阈值才进入拖拽，避免误伤普通点击
+        if (Math.abs(e.clientX - st.startX) < 5 && Math.abs(e.clientY - st.startY) < 5) return;
+        st.active = true;
+        const ghost = document.createElement('div');
+        ghost.className = 'tree-drag-ghost';
+        ghost.textContent = st.name;
+        document.body.appendChild(ghost);
+        st.ghost = ghost;
+      }
+      st.ghost.style.left = (e.clientX + 12) + 'px';
+      st.ghost.style.top = (e.clientY + 8) + 'px';
+      // 计算悬停落点：目录行 → 移入其内；文件行 → 移到其所在目录；树空白处 → 工作区根目录
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const row = el && el.closest ? el.closest('#folder-tree .tree-row') : null;
+      let target = null;
+      if (row) {
+        const node = row.closest('.tree-node');
+        const path = node && node.dataset.path;
+        if (path && path !== st.fromPath) {
+          target = { path, isDir: node.classList.contains('tree-folder'), rowEl: row };
+        }
+      } else if (el && el.closest && el.closest('#folder-tree')) {
+        target = { path: this.workspaceFolder, isDir: true, rowEl: null };
+      }
+      st.target = target;
+      treeEl.querySelectorAll('.tree-row.tree-drop-target').forEach(el2 => el2.classList.remove('tree-drop-target'));
+      if (target && target.rowEl) target.rowEl.classList.add('tree-drop-target');
+    });
+
+    document.addEventListener('mouseup', () => {
+      const st = this._treeDragState;
+      if (!st) return;
+      this._treeDragState = null;
+      if (st.ghost) st.ghost.remove();
+      treeEl.querySelectorAll('.tree-row.tree-drop-target').forEach(el2 => el2.classList.remove('tree-drop-target'));
+      if (!st.active) return;
+      this._treeDragSuppressClick = true;
+      if (st.target) this.moveTreeEntry(st.fromPath, st.fromIsDir, st.target.path, st.target.isDir);
+    });
+  }
+
+  // 无标签页空状态：保存/导出类操作要求存在活动标签，否则状态栏提示
+  _requireActiveTab() {
+    if (this.activeTab) return true;
+    this.setStatus(this.t('noOpenFiles'));
+    return false;
+  }
+
   async saveFile() {
+    if (!this._requireActiveTab()) return;
     try {
       let path = this.activeTab.filePath;
       if (!path) {
@@ -6500,6 +6640,7 @@ class MarkdownEditor {
   }
 
   async saveAsFile() {
+    if (!this._requireActiveTab()) return;
     try {
       const path = await dialogSave({
         defaultPath: this.activeTab.filePath || `${this.activeTab.name}`,
@@ -6524,6 +6665,7 @@ class MarkdownEditor {
   }
 
   async exportHTML() {
+    if (!this._requireActiveTab()) return;
     try {
       const path = await dialogSave({
         defaultPath: this.activeTab.filePath
@@ -6657,6 +6799,7 @@ ${clone.innerHTML}
   }
 
   async exportImage() {
+    if (!this._requireActiveTab()) return;
     if (typeof html2canvas === 'undefined') {
       this.reportError('E_RENDER', { detail: '导出组件未加载（html2canvas not loaded）' });
       return;
@@ -6751,6 +6894,7 @@ ${clone.innerHTML}
   }
 
   async exportPDF() {
+    if (!this._requireActiveTab()) return;
     // Print tips before starting
     const proceed = await this.showConfirmDialog(
       this.t('exportPDF'),
@@ -9275,11 +9419,11 @@ input[type="checkbox"]:checked::after { display: none !important; }
         if (!ok) return;
       }
     }
-    this.tabs = [new Tab(`${this.t('untitled')}${this.untitledCounter++}`)];
-    this.activeTabIndex = 0;
-    this.cm.setValue('');
+    // 全部关闭：进入无标签页空状态，不再自动新建空文档
+    this.tabs = [];
+    this.activeTabIndex = -1;
+    this._enterNoTabState();
     this.updateTabBar();
-    this.updatePreview();
     this.saveSession();
   }
 
@@ -9326,7 +9470,6 @@ input[type="checkbox"]:checked::after { display: none !important; }
 
   async handleAppClose() {
     try {
-      const { getCurrentWindow } = window.__TAURI__.window;
       // 1. 处理未保存文档
       const modified = this.tabs.filter(t => t.isModified);
       if (modified.length > 0) {
@@ -9361,29 +9504,18 @@ input[type="checkbox"]:checked::after { display: none !important; }
       }
       // 2. 保存会话
       this.saveSession();
-      // 3. 按用户偏好执行关闭行为
+      // 3. 按用户偏好执行关闭行为（仅剩退出；历史遗留的 minimize 值回退为每次询问）
       const action = await this._resolveCloseAction();
       if (!action) return; // 用户在弹框点了取消
-      if (action === 'quit') {
-        await invoke('quit_app');
-      } else {
-        await getCurrentWindow().hide();
-      }
+      await invoke('quit_app');
     } catch (error) {
       console.error('handleAppClose error:', error);
-      try {
-        if (window.__TAURI__) {
-          const { getCurrentWindow } = window.__TAURI__.window;
-          await getCurrentWindow().hide();
-        }
-      } catch { /* 浏览器环境下降级 */ }
     }
   }
 
   async _resolveCloseAction() {
     const action = this.settings.closeAction || 'ask';
     if (action === 'quit') return 'quit';
-    if (action === 'minimize') return 'minimize';
     // ask — 弹出确认对话框
     const result = await Dialogs.showCloseDialog({
       t: (k, p) => this.t(k, p),

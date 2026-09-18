@@ -65,6 +65,20 @@ test('边界 no-op：第一行上移/最后一行下移不改变文档', async (
   assert.strictEqual(ed.cm.getValue(), before, '最后一行下移应 no-op');
 }));
 
+test('默认键位：moveLineUp/Down 出厂即绑定 Alt+ArrowUp/Down 并注册到 extraKeys', async () => withEditor({ captureInitErr: true }, async (w, ed) => {
+  // 全新安装（vscode 默认方案，无覆盖表）：出厂即有 Alt+方向键
+  assert.strictEqual(ed.shortcuts.moveLineUp.key, 'Alt+ArrowUp', 'moveLineUp 默认键应为 Alt+ArrowUp');
+  assert.strictEqual(ed.shortcuts.moveLineDown.key, 'Alt+ArrowDown', 'moveLineDown 默认键应为 Alt+ArrowDown');
+  const extraKeys = ed.cm.getOption('extraKeys');
+  assert.strictEqual(typeof extraKeys['Alt-Up'], 'function', '默认键 Alt+ArrowUp 应注册到 extraKeys[Alt-Up]');
+  assert.strictEqual(typeof extraKeys['Alt-Down'], 'function', '默认键 Alt+ArrowDown 应注册到 extraKeys[Alt-Down]');
+  // 触发验证：默认键位直接可用
+  ed.cm.setValue('A\nB\nC');
+  ed.cm.setCursor({ line: 1, ch: 0 });
+  extraKeys['Alt-Up'](ed.cm);
+  assert.strictEqual(ed.cm.getLine(0), 'B', '默认 Alt+Up 应能上移当前行');
+}));
+
 test('快捷键注册：moveLineUp/Down 在 editorMap 且经 applyShortcuts 绑定到 extraKeys', async () => withEditor({ captureInitErr: true }, async (w, ed) => {
   // 模拟用户为 moveLineUp 分配 Ctrl+J（与现有快捷键不冲突）
   ed.shortcuts.moveLineUp.key = 'Ctrl+J';

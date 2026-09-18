@@ -94,14 +94,13 @@ function showConfirmDialog(opts) {
   });
 }
 
-// 关闭窗口确认对话框：返回 { action: 'quit'|'minimize', remember: boolean }，取消则 resolve(null)。
+// 关闭窗口确认对话框：返回 { action: 'quit', remember: boolean }，取消则 resolve(null)。
 function showCloseDialog(opts) {
   const doc = opts.doc || document;
   const t = opts.t || ((k) => k);
   return new Promise((resolve) => {
     const dialog = doc.getElementById('close-confirm-dialog');
     const quitBtn = doc.getElementById('close-dialog-quit');
-    const minimizeBtn = doc.getElementById('close-dialog-minimize');
     const rememberCb = doc.getElementById('close-dialog-remember');
     const overlay = dialog;
 
@@ -110,17 +109,12 @@ function showCloseDialog(opts) {
     const cleanup = () => {
       dialog.classList.add('hidden');
       quitBtn.removeEventListener('click', onQuit);
-      minimizeBtn.removeEventListener('click', onMinimize);
       overlay.removeEventListener('click', onOverlay);
     };
 
     const onQuit = () => {
       cleanup();
       resolve({ action: 'quit', remember: rememberCb.checked });
-    };
-    const onMinimize = () => {
-      cleanup();
-      resolve({ action: 'minimize', remember: rememberCb.checked });
     };
     const onOverlay = (e) => {
       if (e.target === overlay) {
@@ -130,7 +124,6 @@ function showCloseDialog(opts) {
     };
 
     quitBtn.addEventListener('click', onQuit);
-    minimizeBtn.addEventListener('click', onMinimize);
     overlay.addEventListener('click', onOverlay);
   });
 }

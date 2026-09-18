@@ -8,6 +8,9 @@ let __fs_allFiles = [];
 let __fs_filteredFiles = [];
 let __fs_selectedIndex = -1;
 let __fs_workspaceFolder = null;
+// 记录鼠标真实位置，用于过滤 DOM 重绘触发的合成 mouseenter（光标未动时不应自动选中）
+let __fs_lastMouseX = -1;
+let __fs_lastMouseY = -1;
 
 const FILE_ICON = '<svg class="fs-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/></svg>';
 
@@ -26,6 +29,12 @@ function initFileSearch() {
 
   // 阻止所有键盘事件冒泡到编辑器
   __fs_dialog.addEventListener('keydown', (e) => { e.stopPropagation(); });
+
+  // 全局追踪鼠标真实移动位置（区分真实 hover 与 DOM 重绘产生的合成事件）
+  document.addEventListener('mousemove', (e) => {
+    __fs_lastMouseX = e.clientX;
+    __fs_lastMouseY = e.clientY;
+  });
 
   __fs_inputEl.addEventListener('input', () => {
     const q = __fs_inputEl.value.trim().toLowerCase();
@@ -82,7 +91,9 @@ function fsRenderList() {
       const idx = parseInt(el.dataset.index, 10);
       if (__fs_filteredFiles[idx]) fsOpenFile(__fs_filteredFiles[idx]);
     });
-    el.addEventListener('mouseenter', () => {
+    el.addEventListener('mouseenter', (e) => {
+      // 光标坐标未变化说明是列表重绘触发的合成事件，忽略；仅响应真实鼠标移动
+      if (e.clientX === __fs_lastMouseX && e.clientY === __fs_lastMouseY) return;
       const idx = parseInt(el.dataset.index, 10);
       if (idx !== __fs_selectedIndex) { __fs_selectedIndex = idx; fsRenderList(); }
     });

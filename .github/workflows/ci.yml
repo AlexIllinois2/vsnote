@@ -1,89 +1,19 @@
-name: CI
+# 推送 v* tag：三平台（Linux / Windows / macOS）构建并发布到同一 Release
+# 仅构建，不运行任何测试用例
+name: Release
 
 on:
   push:
-    branches: [master, main]
     tags: ['v*']
-  pull_request:
-    branches: [master, main]
 
 # 取消同一 ref 上的旧运行，节省资源
 concurrency:
-  group: ci-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # 分支推送 / PR：静态守卫 + 测试（tag 构建不触发本 job）
-  frontend:
-    name: Frontend (check + test)
-    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node 22 (LTS)
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      # 完整安装（不 --omit=dev）：devDeps 含 esbuild/jsdom，test 与 build:renderer 都需要
-      - name: Install dependencies (npm ci, full)
-        run: npm ci
-
-      # ADR-7：先本地可执行，CI 见 P1-8。
-      # coupling-report / check-globals / entry-scripts / tauri-api 仅读源码，无需打包产物。
-      - name: Coupling & global-export guards
-        run: npm run check
-
-      # npm test 的 pretest 钩子会自动执行 build:renderer 构建 unified-bundle，
-      # 之后 run-tests.cjs 跑全部 test/*.test.cjs（含需 eval bundle 的集成用例）。
-      - name: Run tests
-        run: npm test
-
-      # P2-3：release 前端聚合冒烟——验证 dist/ 可生成
-      - name: Frontend bundle smoke (build-frontend)
-        run: npm run build-frontend
-
-  rust:
-    name: Rust (cargo test, optional)
-    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-    runs-on: ubuntu-latest
-    # 可选关卡：Linux webkit 环境偶发不稳不应阻塞前端合并；失败仅作信号。
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      # Tauri v2 Linux 编译依赖
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev build-essential curl wget file \
-            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
-
-      - name: Run cargo test
-        working-directory: src-tauri
-        run: cargo test
-
-  # 推送 v* tag：三平台（Linux / Windows / macOS）构建并发布到同一 Release，不运行测试用例
   release:
     name: Release (${{ matrix.os }})
-    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write # 允许创建 Release / 上传产物

@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [master, main]
+    tags: ['v*']
   pull_request:
     branches: [master, main]
 
@@ -12,8 +13,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 分支推送 / PR：静态守卫 + 测试（tag 构建不触发本 job）
   frontend:
     name: Frontend (check + test)
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,13 +41,13 @@ jobs:
       - name: Run tests
         run: npm test
 
-      # P2-3：release 前端聚合冒烟——验证 dist/ 可生成（beforeBuildCommand 关键一环，
-      # 若 build-frontend 在 CI 上坏掉，tauri build 会直接失败）
+      # P2-3：release 前端聚合冒烟——验证 dist/ 可生成
       - name: Frontend bundle smoke (build-frontend)
         run: npm run build-frontend
 
   rust:
     name: Rust (cargo test, optional)
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     # 可选关卡：Linux webkit 环境偶发不稳不应阻塞前端合并；失败仅作信号。
     continue-on-error: true
@@ -76,3 +79,84 @@ jobs:
       - name: Run cargo test
         working-directory: src-tauri
         run: cargo test
+
+  # 推送 v* tag：三平台（Linux / Windows / macOS）构建并发布到同一 Release，不运行测试用例
+  release:
+    name: Release (${{ matrix.os }})
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write # 允许创建 Release / 上传产物
+    strategy:
+      # 单平台失败不影响其他平台继续出包
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04 # Linux x64
+          - os: windows-latest # Windows x64
+          - os: macos-latest # macOS arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      # 仅 Linux 需要 Tauri v2 系统依赖；Windows / macOS 开箱即用
+      - name: Install system dependencies (Tauri v2 Linux)
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Setup Node.js 22 (LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      # tauri.conf.json 无 beforeBuildCommand，tauri build 前必须先生成 unified-bundle.js
+      - name: Build renderer bundle
+        run: npm run build:renderer
+
+      - name: Build Tauri app & release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Release 名与 tag 名一致
+          tagName: ${{ github.ref_name }}
+          releaseName: ${{ github.ref_name }}
+          releaseBody: |
+            自动构建产物，对应 tag ${{ github.ref_name }}（commit ${{ github.sha }}）。
+          releaseDraft: false
+          prerelease: false
+
+      # 额外上传构建产物到 Actions Artifacts，方便直接下载
+      # （各平台只会命中自己的格式，未匹配的路径自动跳过）
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundles-${{ matrix.os }}-${{ github.ref_name }}
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/rpm/*.rpm
+            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/bundle/dmg/*.dmg

@@ -29,42 +29,42 @@
   --font-preview: "IBM Plex Serif", Georgia, "Times New Roman", "Songti SC", serif;
 }
 
-/* ========== 基准（默认）浅色 ========== */
+/* ========== 基准（默认）浅色 —— 对齐 VSCode Light Modern / Trae ========== */
 :root,
 [data-color-scheme="default"] {
-  --bg-primary: #f8f7f4;
-  --bg-secondary: #eeedec;
-  --bg-toolbar: #e6e5e2;
-  --bg-tab: #e0dfdc;
-  --bg-tab-active: #f8f7f4;
-  --text-primary: #2c2c2e;
-  --text-secondary: #6e6e72;
-  --border-color: #dcdad7;
-  --accent-color: #2050d0;
-  --accent-hover: #1a42b0;
-  --accent-pressed: #15358a;
-  --accent-subtle: rgba(32, 80, 208, 0.07);
-  --accent-muted: rgba(32, 80, 208, 0.15);
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8f8f8;
+  --bg-toolbar: #f8f8f8;
+  --bg-tab: #ececec;
+  --bg-tab-active: #ffffff;
+  --text-primary: #3b3b3b;
+  --text-secondary: #616161;
+  --border-color: #e5e5e5;
+  --accent-color: #005fb8;
+  --accent-hover: #0258a8;
+  --accent-pressed: #024680;
+  --accent-subtle: rgba(0, 95, 184, 0.07);
+  --accent-muted: rgba(0, 95, 184, 0.15);
   --accent-text: #ffffff;
-  --color-success: #16a34a;
-  --color-danger: #dc2626;
-  --color-warning: #e8a020;
+  --color-success: #1a7f37;
+  --color-danger: #e51400;
+  --color-warning: #bf8803;
   --bg-hover: rgba(0, 0, 0, 0.04);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.18);
   --shadow-up-sm: 0 -1px 3px rgba(0, 0, 0, 0.08);
   --heading-color: var(--text-primary);
-  --heading-h2-color: #26262a;
+  --heading-h2-color: #2f2f2f;
   --heading-h1-color: var(--text-primary);
-  --toc-bg: linear-gradient(135deg, #eef2f8 0%, #e6ecf6 100%);
-  --toc-border: #cdd4e8;
-  --scrollbar-track: #f0efec;
-  --scrollbar-thumb: #c4c3c0;
-  --scrollbar-thumb-hover: #a8a7a4;
-  --preview-bg: #f8f7f4;
-  --code-bg: #eeedec;
-  --find-bg: #eeedec;
+  --toc-bg: linear-gradient(135deg, #f2f6fc 0%, #e9f0f9 100%);
+  --toc-border: #d6e2f0;
+  --scrollbar-track: #f8f8f8;
+  --scrollbar-thumb: #c1c1c1;
+  --scrollbar-thumb-hover: #a8a8a8;
+  --preview-bg: #ffffff;
+  --code-bg: #f6f6f6;
+  --find-bg: #f2f2f2;
 }
 
 /* ========== 翠林风 浅色 ========== */
@@ -215,42 +215,42 @@
   --find-bg: #f4eee6;
 }
 
-/* ========== 基准（默认）深色 ========== */
+/* ========== 基准（默认）深色 —— 对齐 VSCode Dark Modern / Trae ========== */
 [data-theme="dark"],
 [data-color-scheme="default"][data-theme="dark"] {
-  --bg-primary: #1a1c20;
-  --bg-secondary: #1f2126;
-  --bg-toolbar: #25272e;
-  --bg-tab: #212329;
-  --bg-tab-active: #1a1c20;
-  --text-primary: #d1d2d6;
-  --text-secondary: #8e8f96;
-  --border-color: #32343c;
-  --accent-color: #4a9eff;
-  --accent-hover: #66b0ff;
-  --accent-pressed: #2d86f0;
-  --accent-subtle: rgba(74, 158, 255, 0.10);
-  --accent-muted: rgba(74, 158, 255, 0.20);
+  --bg-primary: #1f1f1f;
+  --bg-secondary: #181818;
+  --bg-toolbar: #181818;
+  --bg-tab: #181818;
+  --bg-tab-active: #1f1f1f;
+  --text-primary: #cccccc;
+  --text-secondary: #9d9d9d;
+  --border-color: #2b2b2b;
+  --accent-color: #0078d4;
+  --accent-hover: #026ec1;
+  --accent-pressed: #0258a8;
+  --accent-subtle: rgba(0, 120, 212, 0.10);
+  --accent-muted: rgba(0, 120, 212, 0.25);
   --accent-text: #ffffff;
-  --color-success: #4ade80;
-  --color-danger: #f87171;
-  --color-warning: #f0b840;
-  --bg-hover: rgba(255, 255, 255, 0.05);
+  --color-success: #3fb950;
+  --color-danger: #f14c4c;
+  --color-warning: #cca700;
+  --bg-hover: rgba(255, 255, 255, 0.07);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.25);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.45);
   --shadow-up-sm: 0 -1px 3px rgba(0, 0, 0, 0.25);
   --heading-color: var(--text-primary);
-  --heading-h2-color: #b8b9c0;
+  --heading-h2-color: #c8c8c8;
   --heading-h1-color: var(--text-primary);
-  --toc-bg: linear-gradient(135deg, #1a2235 0%, #162033 100%);
-  --toc-border: #28334a;
-  --scrollbar-track: #1a1c20;
-  --scrollbar-thumb: #383a42;
-  --scrollbar-thumb-hover: #4c4e58;
-  --preview-bg: #1a1c20;
-  --code-bg: #1f2126;
-  --find-bg: #1f2126;
+  --toc-bg: linear-gradient(135deg, #1c2436 0%, #161d2c 100%);
+  --toc-border: #2b3547;
+  --scrollbar-track: #1f1f1f;
+  --scrollbar-thumb: #4a4a4a;
+  --scrollbar-thumb-hover: #5a5a5a;
+  --preview-bg: #1f1f1f;
+  --code-bg: #252526;
+  --find-bg: #252526;
 }
 
 /* ========== 翠林风 深色 ========== */
@@ -2489,11 +2489,17 @@ body.is-resizing .side-btn {
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 4px;
+  padding: 0;
+}
+
+.outline-close-btn svg {
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 
 .outline-close-btn:hover {
@@ -2594,11 +2600,17 @@ body.is-resizing .side-btn {
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 4px;
+  padding: 0;
+}
+
+.folder-close-btn svg {
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 
 .folder-close-btn:hover {

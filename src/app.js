@@ -3076,6 +3076,7 @@ class MarkdownEditor {
     });
 
     this.cm.on('cursorActivity', () => {
+      this._scheduleSelectionMatches(); // 选中内容高亮：选区变化即刷新（无选区时仅清理）
       if (!this.activeTab) return; // 无标签页空状态：不写回光标
       const cursor = this.cm.getCursor();
       this.activeTab.cursorPos = cursor;
@@ -4664,6 +4665,67 @@ class MarkdownEditor {
       this.findMarks.forEach(m => { try { m.clear(); } catch (_) {} });
     }
     this.findMarks = [];
+  }
+
+  // ===== 选中内容高亮（VSCode selectionHighlight 行为）=====
+  // 选中非空文本后，为当前文件中所有相同内容加主题色描边（多行选区同样支持）。
+  // 规则：区分大小写的字面子串匹配（不做整词边界限制，选中 zip 也能高亮 xxzip 中的 zip）；
+  // 跳过选区自身；上限 200 字符 / 500 处；超大文档（>2MB）跳过以保证流畅。
+  _scheduleSelectionMatches() {
+    clearTimeout(this._selMatchTimer);
+    const sels = this.cm.listSelections();
+    const hasSel = sels.some(s => (s.anchor.line !== s.head.line) || (s.anchor.ch !== s.head.ch));
+    if (!hasSel) { this.clearSelectionMatches(); return; } // 取消选中：立即清除，不留残影
+    this._selMatchTimer = setTimeout(() => this.updateSelectionMatches(), 150); // 轻防抖，拖选不卡
+  }
+
+  updateSelectionMatches() {
+    this.clearSelectionMatches();
+    const value = this.cm.getValue();
+    if (value.length > 2 * 1024 * 1024) return;
+    const sels = this.cm.listSelections();
+    const texts = new Set();
+    const selRanges = []; // 选区自身范围（index 区间），匹配时排除
+    for (const sel of sels) {
+      const text = this.cm.getRange(sel.from(), sel.to());
+      if (!text || text.length > 200) continue; // 空选区 / 超长选区不触发
+      texts.add(text);
+      selRanges.push([this.cm.indexFromPos(sel.from()), this.cm.indexFromPos(sel.to())]);
+    }
+    if (!texts.size) return;
+    const inSelection = (start, end) => selRanges.some(([s, e]) => start < e && end > s);
+    // 一次线性遍历建立 index→pos 映射（CM5 的 index 即字符串下标，'\n' 计 1），避免逐个 posFromIndex 的 O(n²)
+    const lines = value.split('\n');
+    const lineStarts = new Array(lines.length);
+    for (let i = 0, off = 0; i < lines.length; i++) { lineStarts[i] = off; off += lines[i].length + 1; }
+    const posAt = (index) => {
+      let lo = 0, hi = lines.length - 1;
+      while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (lineStarts[mid] <= index) lo = mid; else hi = mid - 1; }
+      return { line: lo, ch: index - lineStarts[lo] };
+    };
+    const LIMIT = 500;
+    const marks = [];
+    this.cm.operation(() => {
+      for (const text of texts) {
+        let idx = 0;
+        while (marks.length < LIMIT && (idx = value.indexOf(text, idx)) !== -1) {
+          const end = idx + text.length;
+          if (!inSelection(idx, end)) {
+            marks.push(this.cm.markText(posAt(idx), posAt(end), { className: 'selection-match' }));
+          }
+          idx = end;
+        }
+        if (marks.length >= LIMIT) break;
+      }
+    });
+    this.selectionMatchMarks = marks;
+  }
+
+  clearSelectionMatches() {
+    if (this.selectionMatchMarks && this.selectionMatchMarks.length) {
+      this.selectionMatchMarks.forEach(m => { try { m.clear(); } catch (_) {} });
+    }
+    this.selectionMatchMarks = [];
   }
 
   // 跨文件搜索高亮：独立于文件内查找（findMarks），便于两种查找互斥时各自清理互不干扰

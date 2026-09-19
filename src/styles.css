@@ -1068,6 +1068,13 @@ body {
   padding: 1px 4px;
   border-radius: 3px;
 }
+/* 选中内容高亮（VSCode selectionHighlight）：选中文本后，其余相同内容加主题色描边+浅底。
+   与 .search-match（祖母绿实底）和原生选区（系统蓝半透明底）在视觉上区分。 */
+.selection-match {
+  box-shadow: 0 0 0 1px var(--accent-color);
+  background-color: var(--accent-subtle);
+  border-radius: 2px;
+}
 
 /* 跨文件搜索弹框：非模态浮动面板，不遮挡编辑器交互，可拖动到任意位置。
    注意：选择器用 .dialog-overlay.cross-search-overlay（双类，特异性高于基础 .dialog-overlay），

@@ -5776,10 +5776,11 @@ class MarkdownEditor {
     }
   }
 
-  newFile() {
+  async newFile() {
     this.setViewMode('edit');
-    this.addTab(this.t('untitled'), '', null);
+    await this.addTab(this.t('untitled'), '', null);
     this.setStatus(this.t('newFileCreated'));
+    this.cm.focus();
   }
 
   async reloadFile() {
@@ -6386,6 +6387,7 @@ class MarkdownEditor {
       this.setStatus(this.t('fileNewFile') + ': ' + finalName);
       // 新建后自动打开（编辑模式下直接进入可编辑状态）
       await this.openFilePath(newPath);
+      if (this.viewMode !== 'preview') this.cm.focus();
     } catch (e) {
       this.showToast(this.t('fileCreateFailed') + ': ' + e, 'danger');
     }

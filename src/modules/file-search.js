@@ -41,7 +41,22 @@ function initFileSearch() {
     if (!q) {
       __fs_filteredFiles = __fs_allFiles.slice(0, 50);
     } else {
-      __fs_filteredFiles = __fs_allFiles.filter(f => f.name.toLowerCase().includes(q));
+      // 匹配度分层（内部均保持原有字母序）：
+      // 1. 去掉后缀后与搜索词完全相同 → 最前；2. 去掉后缀后前缀匹配 → 次之；3. 其余命中项保持原逻辑
+      const baseNoExt = (name) => {
+        const lower = name.toLowerCase();
+        const dot = lower.lastIndexOf('.');
+        return dot > 0 ? lower.slice(0, dot) : lower;
+      };
+      const exact = [], prefix = [], rest = [];
+      for (const f of __fs_allFiles) {
+        if (!f.name.toLowerCase().includes(q)) continue; // 过滤条件与原逻辑一致
+        const base = baseNoExt(f.name);
+        if (base === q) exact.push(f);
+        else if (base.startsWith(q)) prefix.push(f);
+        else rest.push(f);
+      }
+      __fs_filteredFiles = exact.concat(prefix, rest);
     }
     __fs_selectedIndex = -1;
     fsRenderList();

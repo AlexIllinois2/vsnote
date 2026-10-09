@@ -32,6 +32,10 @@ md-5 = "0.10"
 imagesize = "0.13"
 encoding_rs = "0.8"
 regex = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+aes-gcm = "0.10"
+pbkdf2 = { version = "0.12", features = ["hmac"] }
+sha2 = "0.10"
 
 [patch.crates-io]
 brotli = { git = "https://github.com/dropbox/rust-brotli", rev = "9cbed81a1a098fcd4ffcf956429dce6154415970" }

@@ -672,6 +672,10 @@ body {
   display: none;
 }
 
+.dropdown-item.hidden {
+  display: none;
+}
+
 .dropdown-item {
   display: flex;
   align-items: center;

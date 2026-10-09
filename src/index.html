@@ -117,7 +117,7 @@
               </div>
               <div class="dropdown-item" id="btn-open-folder">
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M2 8h20"/><path d="M6 12h4"/><path d="M6 16h4"/></svg>
-                <span>打开文件夹</span>
+                <span>打开文件夹或 SQLite db</span>
               </div>
               <div class="dropdown-item dropdown-submenu-trigger" id="btn-recent" data-submenu="recent-files-submenu">
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -156,6 +156,16 @@
               <div class="dropdown-item" id="btn-export-pdf">
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
                 <span>导出 PDF</span>
+                <span class="shortcut"></span>
+              </div>
+              <div class="dropdown-item hidden" id="btn-export-db">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
+                <span>导出为 SQLite db…</span>
+                <span class="shortcut"></span>
+              </div>
+              <div class="dropdown-item hidden" id="btn-export-folder">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M2 8h20"/></svg>
+                <span>导出为文件夹…</span>
                 <span class="shortcut"></span>
               </div>
               <div class="dropdown-item" id="btn-shortcuts">
@@ -722,6 +732,40 @@
     </div>
   </div>
 
+  <!-- 打开目标选择对话框：文件夹 / SQLite db -->
+  <div id="open-target-dialog" class="dialog-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="open-target-dialog-title">
+    <div class="dialog prompt-dialog">
+      <div class="dialog-header">
+        <h2 id="open-target-dialog-title">打开</h2>
+      </div>
+      <div class="dialog-content">
+        <p id="open-target-dialog-message">请选择要打开的工作区类型</p>
+      </div>
+      <div class="dialog-footer">
+        <button id="open-target-dialog-cancel" class="dialog-btn">取消</button>
+        <button id="open-target-dialog-folder" class="dialog-btn">文件夹</button>
+        <button id="open-target-dialog-db" class="dialog-btn dialog-btn-primary">SQLite db</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SQLite db 密码对话框：新建加密 / 打开加密 db -->
+  <div id="db-password-dialog" class="dialog-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="db-password-dialog-title">
+    <div class="dialog prompt-dialog">
+      <div class="dialog-header">
+        <h2 id="db-password-dialog-title">SQLite db 密码</h2>
+      </div>
+      <div class="dialog-content">
+        <p id="db-password-dialog-message"></p>
+        <input id="db-password-dialog-input" type="password" autocomplete="new-password" spellcheck="false" />
+      </div>
+      <div class="dialog-footer">
+        <button id="db-password-dialog-cancel" class="dialog-btn">取消</button>
+        <button id="db-password-dialog-confirm" class="dialog-btn dialog-btn-primary">确认</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 关闭窗口确认对话框 -->
   <div id="close-confirm-dialog" class="dialog-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="close-dialog-title">
     <div class="dialog close-confirm-dialog">
@@ -1019,6 +1063,17 @@
             <select id="set-default-view">
               <option value="preview">预览</option>
               <option value="edit" selected>编辑</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <label>Git 自动同步</label>
+            <select id="set-git-autosync">
+              <option value="0">禁用</option>
+              <option value="1">每 1 分钟</option>
+              <option value="3">每 3 分钟</option>
+              <option value="5" selected>每 5 分钟</option>
+              <option value="10">每 10 分钟</option>
+              <option value="30">每 30 分钟</option>
             </select>
           </div>
           <div class="settings-row">

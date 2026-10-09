@@ -431,6 +431,26 @@ const I18N = {
     switchWorkspaceTitle: '切换工作区',
     switchWorkspaceMsg: '当前已打开工作区，是否切换到 {path}？',
     sidebar: '侧边栏',
+    openFolderOrDb: '打开文件夹或 SQLite db',
+    exportDb: '导出为 SQLite db…',
+    exportFolder: '导出为文件夹…',
+    openTargetTitle: '打开',
+    openTargetMsg: '请选择要打开的工作区类型',
+    openTargetFolder: '文件夹',
+    dbPasswordTitle: 'SQLite db 密码',
+    dbCreatePasswordMsg: '为导出的 db 设置密码（留空则不加密）',
+    dbPasswordRequiredMsg: '「{name}」已加密，请输入密码',
+    dbWrongPasswordMsg: '密码错误，请重新输入',
+    dbNotVsNoteDb: '所选文件不是 vsnote SQLite 数据库',
+    dbFileFilter: 'SQLite db',
+    dbTargetExists: '目标文件已存在，请换个位置或文件名',
+    dbOpened: '已打开 SQLite db: {path}',
+    dbExportDone: '已导出为 SQLite db: {name}',
+    dbExportFolderDone: '已导出为文件夹: {name}',
+    gitAutoSync: 'Git 自动同步',
+    gitSynced: 'Git 已自动提交并推送',
+    gitPulled: '已拉取 Git 远端更新',
+    gitSyncFailed: 'Git 同步失败',
   },
   en: {
     file: 'File',
@@ -800,6 +820,26 @@ const I18N = {
     switchWorkspaceTitle: 'Switch Workspace',
     switchWorkspaceMsg: 'A workspace is already open. Switch to {path}?',
     sidebar: 'Sidebar',
+    openFolderOrDb: 'Open Folder or SQLite db',
+    exportDb: 'Export as SQLite db…',
+    exportFolder: 'Export as Folder…',
+    openTargetTitle: 'Open',
+    openTargetMsg: 'Choose the workspace type to open',
+    openTargetFolder: 'Folder',
+    dbPasswordTitle: 'SQLite db Password',
+    dbCreatePasswordMsg: 'Set a password for the exported db (leave empty for no encryption)',
+    dbPasswordRequiredMsg: '"{name}" is encrypted. Enter the password',
+    dbWrongPasswordMsg: 'Wrong password. Try again',
+    dbNotVsNoteDb: 'The selected file is not a vsnote SQLite database',
+    dbFileFilter: 'SQLite db',
+    dbTargetExists: 'Target file already exists. Choose another location or name',
+    dbOpened: 'Opened SQLite db: {path}',
+    dbExportDone: 'Exported as SQLite db: {name}',
+    dbExportFolderDone: 'Exported as folder: {name}',
+    gitAutoSync: 'Git Auto Sync',
+    gitSynced: 'Git auto committed and pushed',
+    gitPulled: 'Pulled updates from Git remote',
+    gitSyncFailed: 'Git sync failed',
   }
 };
 
@@ -1020,6 +1060,9 @@ class MarkdownEditor {
     updateMenuText('btn-export-html', t('exportHTML'));
     updateMenuText('btn-export-img', t('exportImg'));
     updateMenuText('btn-export-pdf', t('exportPDF'));
+    updateMenuText('btn-export-db', t('exportDb'));
+    updateMenuText('btn-export-folder', t('exportFolder'));
+    updateMenuText('btn-open-folder', t('openFolderOrDb'));
     updateMenuText('btn-shortcuts', t('shortcuts'));
     updateMenuText('btn-settings', t('settings'));
     updateMenuText('btn-user-guide', t('userGuide'));
@@ -1087,6 +1130,7 @@ class MarkdownEditor {
     setRowLabel('set-max-width', t('maxWidth'));
     setSectionTitle('set-default-view', t('behavior'));
     setRowLabel('set-default-view', t('defaultView'));
+    setRowLabel('set-git-autosync', t('gitAutoSync'));
     setRowLabel('set-scroll-sync', t('scrollSync'));
     setRowLabel('set-soft-breaks', t('softBreaks'));
     const softBreaksHint = document.querySelector('#setting-soft-breaks-hint .hint-text');
@@ -1423,6 +1467,7 @@ class MarkdownEditor {
       customFonts: [],
       editorFont: '',
       previewFont: '',
+      gitAutoSyncMinutes: 5,
     };
   }
 
@@ -1507,6 +1552,7 @@ class MarkdownEditor {
     document.getElementById('set-color-scheme').value = s.colorScheme || 'default';
     document.getElementById('set-font-scheme').value = s.fontScheme || 'system-sans';
     document.getElementById('set-default-view').value = s.defaultView;
+    document.getElementById('set-git-autosync').value = String(s.gitAutoSyncMinutes ?? 5);
     document.getElementById('set-scroll-sync').checked = s.scrollSync;
     document.getElementById('set-code-line-numbers').checked = s.codeLineNumbers;
     document.getElementById('set-code-wrap').checked = s.codeWrap;
@@ -1586,6 +1632,12 @@ class MarkdownEditor {
     document.getElementById('set-default-view').addEventListener('change', (e) => {
       this.settings.defaultView = e.target.value;
       this.saveSettings();
+    });
+    document.getElementById('set-git-autosync').addEventListener('change', (e) => {
+      this.settings.gitAutoSyncMinutes = Number(e.target.value) || 0;
+      this.saveSettings();
+      // 间隔变更即时生效（当前打开的是 git 工作区时重建定时器；0 关闭）
+      this._startGitTimer();
     });
     document.getElementById('set-scroll-sync').addEventListener('change', (e) => {
       this.settings.scrollSync = e.target.checked;
@@ -3836,6 +3888,14 @@ class MarkdownEditor {
       document.getElementById('file-menu').classList.add('hidden');
       this.exportPDF();
     });
+    document.getElementById('btn-export-db').addEventListener('click', () => {
+      document.getElementById('file-menu').classList.add('hidden');
+      this.exportWorkspaceToDb();
+    });
+    document.getElementById('btn-export-folder').addEventListener('click', () => {
+      document.getElementById('file-menu').classList.add('hidden');
+      this.exportDbWorkspaceToFolder();
+    });
     document.getElementById('btn-settings').addEventListener('click', () => {
       document.getElementById('file-menu').classList.add('hidden');
       this.showSettings();
@@ -5899,12 +5959,26 @@ class MarkdownEditor {
     const session = this.loadSession();
     if (!session) return false;
     const tabs = session.tabs || [];
-    const workspaceFolder = session.workspaceFolder || null;
-    if (tabs.length === 0 && !workspaceFolder) return false;
+    const rawWorkspaceFolder = session.workspaceFolder || null;
+    if (tabs.length === 0 && !rawWorkspaceFolder) return false;
+
+    // SQLite db 工作区：会话不保存密码，恢复前先打开（含密码重试循环），
+    // 否则后续标签内容读取会因 db 未注册而失败
+    let workspaceFolder = rawWorkspaceFolder;
+    let dbOpenFailed = false;
+    if (workspaceFolder && this.isDbWorkspacePath(workspaceFolder)) {
+      dbOpenFailed = !(await this._ensureDbOpen(workspaceFolder));
+      if (dbOpenFailed) workspaceFolder = null;
+    }
 
     const restored = [];
     for (const st of tabs) {
       if (!st.filePath) continue;
+      // db 打不开（取消/密码错误）时跳过该 db 内的虚拟路径标签
+      if (dbOpenFailed && rawWorkspaceFolder &&
+          (st.filePath === rawWorkspaceFolder || st.filePath.startsWith(rawWorkspaceFolder + '/'))) {
+        continue;
+      }
       const tab = new Tab(st.name || st.filePath.split(/[/\\]/).pop(), '', st.filePath);
       tab.cursorPos = st.cursorPos || { line: 0, ch: 0 };
       tab.scrollPos = st.scrollPos || { top: 0, left: 0 };
@@ -5966,10 +6040,12 @@ class MarkdownEditor {
     if (workspaceFolder) {
       this.workspaceFolder = workspaceFolder;
       this.expandedFolders = new Set(session.expandedFolders || []);
+      this.updateWorkspaceMenuState();
       await this.renderFolderTree();
       this.setSidebarTab('files');
       this.saveSession();
       this.startFolderWatch();
+      this._initGitSync();
     }
     return true;
   }
@@ -6003,14 +6079,30 @@ class MarkdownEditor {
   }
 
   async openFolder() {
-    try {
-      const selected = await dialogOpen({ directory: true });
-      if (!selected) return;
-      const folderPath = Array.isArray(selected) ? selected[0] : selected;
-      if (!folderPath) return;
-      await this.openFolderPath(folderPath);
-    } catch (e) {
-      this.setStatus(this.t('openFailed') + ': ' + e);
+    const choice = await this.showOpenTargetDialog();
+    if (choice === 'folder') {
+      try {
+        const selected = await dialogOpen({ directory: true });
+        if (!selected) return;
+        const folderPath = Array.isArray(selected) ? selected[0] : selected;
+        if (!folderPath) return;
+        await this.openFolderPath(folderPath);
+      } catch (e) {
+        this.setStatus(this.t('openFailed') + ': ' + e);
+      }
+    } else if (choice === 'db') {
+      try {
+        const selected = await dialogOpen({
+          multiple: false,
+          filters: [{ name: this.t('dbFileFilter'), extensions: ['db', 'sqlite', 'sqlite3', 'vsdb'] }]
+        });
+        if (!selected) return;
+        const dbPath = Array.isArray(selected) ? selected[0] : selected;
+        if (!dbPath) return;
+        await this.openDbWorkspace(dbPath);
+      } catch (e) {
+        this.setStatus(this.t('openFailed') + ': ' + e);
+      }
     }
   }
 
@@ -6020,11 +6112,14 @@ class MarkdownEditor {
     if (!folderPath) return;
     this.showLoading();
     try {
+      await this._closeOldDbWorkspace(folderPath);
       this.workspaceFolder = folderPath;
       this.expandedFolders = new Set();
       await this.renderFolderTree();
       this.showSidebarTab('files');
       this.startFolderWatch();
+      this.updateWorkspaceMenuState();
+      this._initGitSync();
       this.saveSession();
       this.setStatus(this.t('folderOpened', { path: folderPath }));
     } catch (e) {
@@ -6049,6 +6144,324 @@ class MarkdownEditor {
     return true;
   }
 
+  // ── SQLite db 工作区 ──────────────────────────────────────────────
+
+  // 按扩展名判断路径是否可能是 SQLite db 工作区
+  isDbWorkspacePath(p) {
+    return /\.(db|sqlite|sqlite3|vsdb)$/i.test(p || '');
+  }
+
+  // 解析后端结构化错误字符串 {"kind":"...","message":"..."} → kind
+  _dbErrorKind(err) {
+    try {
+      const o = JSON.parse(typeof err === 'string' ? err : String(err));
+      return (o && o.kind) || '';
+    } catch { return ''; }
+  }
+
+  _dbErrorMessage(err) {
+    try {
+      const o = JSON.parse(typeof err === 'string' ? err : String(err));
+      return (o && o.message) || String(err);
+    } catch { return String(err); }
+  }
+
+  // SQLite db 密码输入框：返回输入的密码（空串=不加密），取消返回 null
+  showDbPasswordDialog({ title, message = '' } = {}) {
+    return new Promise((resolve) => {
+      const dialog = document.getElementById('db-password-dialog');
+      const titleEl = document.getElementById('db-password-dialog-title');
+      const msgEl = document.getElementById('db-password-dialog-message');
+      const input = document.getElementById('db-password-dialog-input');
+      const confirmBtn = document.getElementById('db-password-dialog-confirm');
+      const cancelBtn = document.getElementById('db-password-dialog-cancel');
+      if (!dialog || !input) { resolve(null); return; }
+      titleEl.textContent = title || '';
+      msgEl.textContent = message;
+      msgEl.style.display = message ? '' : 'none';
+      input.value = '';
+      dialog.classList.remove('hidden');
+      input.focus();
+      const cleanup = () => {
+        dialog.classList.add('hidden');
+        input.removeEventListener('keydown', onKey);
+        confirmBtn.removeEventListener('click', onConfirm);
+        cancelBtn.removeEventListener('click', onCancel);
+        dialog.removeEventListener('click', onOverlay);
+      };
+      const onConfirm = () => { const v = input.value; cleanup(); resolve(v); };
+      const onCancel = () => { cleanup(); resolve(null); };
+      const onKey = (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); onConfirm(); }
+        else if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+      };
+      const onOverlay = (e) => { if (e.target === dialog) onCancel(); };
+      input.addEventListener('keydown', onKey);
+      confirmBtn.addEventListener('click', onConfirm);
+      cancelBtn.addEventListener('click', onCancel);
+      dialog.addEventListener('click', onOverlay);
+    });
+  }
+
+  // 打开目标选择框：返回 'folder' | 'db' | null（取消）
+  showOpenTargetDialog() {
+    return new Promise((resolve) => {
+      const dialog = document.getElementById('open-target-dialog');
+      const titleEl = document.getElementById('open-target-dialog-title');
+      const msgEl = document.getElementById('open-target-dialog-message');
+      const folderBtn = document.getElementById('open-target-dialog-folder');
+      const dbBtn = document.getElementById('open-target-dialog-db');
+      const cancelBtn = document.getElementById('open-target-dialog-cancel');
+      if (!dialog || !folderBtn || !dbBtn) { resolve(null); return; }
+      titleEl.textContent = this.t('openTargetTitle');
+      msgEl.textContent = this.t('openTargetMsg');
+      folderBtn.textContent = this.t('openTargetFolder');
+      dbBtn.textContent = 'SQLite db';
+      dialog.classList.remove('hidden');
+      dbBtn.focus();
+      const cleanup = () => {
+        dialog.classList.add('hidden');
+        folderBtn.removeEventListener('click', onFolder);
+        dbBtn.removeEventListener('click', onDb);
+        cancelBtn.removeEventListener('click', onCancel);
+        dialog.removeEventListener('keydown', onKey);
+        dialog.removeEventListener('click', onOverlay);
+      };
+      const onFolder = () => { cleanup(); resolve('folder'); };
+      const onDb = () => { cleanup(); resolve('db'); };
+      const onCancel = () => { cleanup(); resolve(null); };
+      const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); onCancel(); } };
+      const onOverlay = (e) => { if (e.target === dialog) onCancel(); };
+      folderBtn.addEventListener('click', onFolder);
+      dbBtn.addEventListener('click', onDb);
+      cancelBtn.addEventListener('click', onCancel);
+      dialog.addEventListener('keydown', onKey);
+      dialog.addEventListener('click', onOverlay);
+    });
+  }
+
+  // 确保 SQLite db 已打开（含密码重试循环）；取消 / 失败返回 false
+  async _ensureDbOpen(dbPath) {
+    let password = null;
+    for (;;) {
+      try {
+        await invoke('db_open', { path: dbPath, password });
+        return true;
+      } catch (err) {
+        const kind = this._dbErrorKind(err);
+        if (kind === 'PasswordRequired') {
+          password = await this.showDbPasswordDialog({
+            title: this.t('dbPasswordTitle'),
+            message: this.t('dbPasswordRequiredMsg', { name: this.baseName(dbPath) })
+          });
+        } else if (kind === 'WrongPassword') {
+          password = await this.showDbPasswordDialog({
+            title: this.t('dbPasswordTitle'),
+            message: this.t('dbWrongPasswordMsg', { name: this.baseName(dbPath) })
+          });
+        } else if (kind === 'NotVsNoteDb') {
+          this.showToast(this.t('dbNotVsNoteDb'), 'danger');
+          return false;
+        } else {
+          this.showToast(this.t('openFailed') + ': ' + this._dbErrorMessage(err), 'danger');
+          return false;
+        }
+        if (!password) return false; // 取消或空密码视为放弃打开
+      }
+    }
+  }
+
+  // 按给定路径打开 SQLite db 为工作区（不走 dialog；密码重试在 _ensureDbOpen 内）
+  async openDbWorkspace(dbPath) {
+    if (!dbPath) return;
+    if (!(await this._ensureDbOpen(dbPath))) return;
+    this.showLoading();
+    try {
+      await this._closeOldDbWorkspace(dbPath);
+      this.workspaceFolder = dbPath;
+      this.expandedFolders = new Set();
+      await this.renderFolderTree();
+      this.showSidebarTab('files');
+      this.startFolderWatch();
+      this.updateWorkspaceMenuState();
+      this._stopGitSync();
+      this.saveSession();
+      this.setStatus(this.t('dbOpened', { path: dbPath }));
+    } catch (e) {
+      this.setStatus(this.t('openFailed') + ': ' + e);
+    } finally {
+      this.hideLoading();
+    }
+  }
+
+  // 运行中收到 db 路径（拖放 / 二次实例 file-open）时的工作区切换入口
+  async maybeOpenDbWorkspace(dbPath, { confirm = true } = {}) {
+    if (!dbPath) return false;
+    if (confirm && this.workspaceFolder && this.workspaceFolder !== dbPath) {
+      const ok = await this.showConfirmDialog(
+        this.t('switchWorkspaceTitle'),
+        this.t('switchWorkspaceMsg', { path: dbPath })
+      );
+      if (!ok) return false;
+    }
+    await this.openDbWorkspace(dbPath);
+    return true;
+  }
+
+  // 切换工作区前关闭旧的 SQLite db（释放连接与解密密钥）
+  async _closeOldDbWorkspace(newPath) {
+    const old = this.workspaceFolder;
+    if (old && old !== newPath && this.isDbWorkspacePath(old)) {
+      try { await invoke('db_close', { path: old }); } catch (e) { /* ignore */ }
+    }
+  }
+
+  // 按工作区类型显隐导出菜单：文件夹工作区→导出为 db；db 工作区→导出为文件夹；无工作区→都隐藏
+  updateWorkspaceMenuState() {
+    const isDb = !!this.workspaceFolder && this.isDbWorkspacePath(this.workspaceFolder);
+    const dbItem = document.getElementById('btn-export-db');
+    const folderItem = document.getElementById('btn-export-folder');
+    if (dbItem) dbItem.classList.toggle('hidden', !this.workspaceFolder || isDb);
+    if (folderItem) folderItem.classList.toggle('hidden', !isDb);
+  }
+
+  // 导出前处理未保存修改：保存 / 放弃 / 取消；返回是否可以继续导出
+  async _confirmSaveDirtyBeforeExport() {
+    const dirty = this.tabs.filter(t => t.isModified);
+    if (dirty.length === 0) return true;
+    const result = await this.showSaveDialog(
+      this.t('saveChanges'),
+      this.t('filesModifiedConfirm', { n: dirty.length }),
+      this.t('saveAll'), this.t('discardAll'), this.t('cancel')
+    );
+    if (result === 'cancel') return false;
+    if (result === 'save') return await this.batchSaveTabs(dirty);
+    return true; // 放弃：按磁盘内容导出
+  }
+
+  // 导出当前文件夹工作区为 SQLite db（可设置密码）
+  async exportWorkspaceToDb() {
+    const src = this.workspaceFolder;
+    if (!src || this.isDbWorkspacePath(src)) return;
+    if (!(await this._confirmSaveDirtyBeforeExport())) return;
+    const dest = await dialogSave({
+      title: this.t('exportDb'),
+      defaultPath: this.baseName(src) + '.db',
+      filters: [{ name: this.t('dbFileFilter'), extensions: ['db'] }]
+    });
+    if (!dest) return;
+    if (await this.pathExists(dest)) {
+      this.showToast(this.t('dbTargetExists'), 'danger');
+      return;
+    }
+    const password = await this.showDbPasswordDialog({
+      title: this.t('dbPasswordTitle'),
+      message: this.t('dbCreatePasswordMsg')
+    });
+    if (password === null) return;
+    this.showLoading();
+    try {
+      await invoke('export_to_db', { src, dest, password });
+      this.showToast(this.t('dbExportDone', { name: this.baseName(dest) }), 'success');
+      this.setStatus(this.t('dbExportDone', { name: this.baseName(dest) }));
+    } catch (e) {
+      this.showToast(this.t('openFailed') + ': ' + this._dbErrorMessage(e), 'danger');
+    } finally {
+      this.hideLoading();
+    }
+  }
+
+  // 导出当前 SQLite db 工作区为文件夹
+  async exportDbWorkspaceToFolder() {
+    const src = this.workspaceFolder;
+    if (!src || !this.isDbWorkspacePath(src)) return;
+    if (!(await this._confirmSaveDirtyBeforeExport())) return;
+    const selected = await dialogOpen({ directory: true });
+    if (!selected) return;
+    const dest = Array.isArray(selected) ? selected[0] : selected;
+    if (!dest) return;
+    this.showLoading();
+    try {
+      await invoke('export_to_folder', { src, dest });
+      this.showToast(this.t('dbExportFolderDone', { name: this.baseName(dest) }), 'success');
+      this.setStatus(this.t('dbExportFolderDone', { name: this.baseName(dest) }));
+    } catch (e) {
+      this.showToast(this.t('openFailed') + ': ' + this._dbErrorMessage(e), 'danger');
+    } finally {
+      this.hideLoading();
+    }
+  }
+
+  // ── Git 自动同步（仅真实文件夹且含 .git 的工作区；SQLite db 工作区不适用）──
+
+  // 打开文件夹工作区后检测 git 仓库：启用定时 pull 与保存后自动 commit+push
+  async _initGitSync() {
+    this._stopGitSync();
+    if (!this.workspaceFolder || this.isDbWorkspacePath(this.workspaceFolder)) return;
+    try {
+      this._gitRepo = await invoke('git_check', { path: this.workspaceFolder });
+    } catch (e) {
+      this._gitRepo = false;
+    }
+    if (!this._gitRepo) return;
+    this._runGitPull(); // 打开时先拉取一次远端更新（fire-and-forget）
+    this._startGitTimer();
+  }
+
+  _stopGitSync() {
+    this._gitRepo = false;
+    if (this._gitPullTimer) { clearInterval(this._gitPullTimer); this._gitPullTimer = null; }
+    if (this._gitCommitTimer) { clearTimeout(this._gitCommitTimer); this._gitCommitTimer = null; }
+  }
+
+  gitAutoSyncEnabled() {
+    return !!this._gitRepo && (Number(this.settings.gitAutoSyncMinutes) || 0) > 0;
+  }
+
+  // 保存 / 文件树增删改后调用：防抖 3s 合并连续变更，再触发 commit+push
+  _noteFsChanged() {
+    if (!this.gitAutoSyncEnabled()) return;
+    clearTimeout(this._gitCommitTimer);
+    this._gitCommitTimer = setTimeout(() => this._runGitAutoSync(), 3000);
+  }
+
+  async _runGitAutoSync() {
+    if (!this.gitAutoSyncEnabled() || this._gitSyncing || !this.workspaceFolder) return;
+    this._gitSyncing = true;
+    try {
+      await invoke('git_auto_sync', {
+        path: this.workspaceFolder,
+        message: 'vsnote: auto sync at ' + new Date().toLocaleString()
+      });
+      this.setStatus(this.t('gitSynced'));
+    } catch (e) {
+      this.showToast(this.t('gitSyncFailed') + ': ' + e, 'danger');
+    } finally {
+      this._gitSyncing = false;
+    }
+  }
+
+  _startGitTimer() {
+    if (this._gitPullTimer) { clearInterval(this._gitPullTimer); this._gitPullTimer = null; }
+    if (!this.gitAutoSyncEnabled()) return;
+    const ms = Number(this.settings.gitAutoSyncMinutes) * 60 * 1000;
+    this._gitPullTimer = setInterval(() => this._runGitPull(), ms);
+  }
+
+  // 定时拉取：干净工作区才 pull（脏跳过，等保存触发的同步处理）；失败静默不打断写作
+  async _runGitPull() {
+    if (!this.gitAutoSyncEnabled() || this._gitSyncing || !this.workspaceFolder) return;
+    this._gitSyncing = true;
+    try {
+      const res = await invoke('git_auto_pull', { path: this.workspaceFolder });
+      if (res && res.updated) this.setStatus(this.t('gitPulled'));
+    } catch (e) {
+      console.warn('[git-auto-pull]', e);
+    } finally {
+      this._gitSyncing = false;
+    }
+  }
+
   // 统一「一批路径按目录/文件分发」：目录加载为工作区（仅第一个，多余目录提示忽略），
   // 文件走 openFilePath。drag-drop / file-open 事件 / 启动 CLI 参数三处入口共用。
   async openPathsSmart(paths, { confirmWorkspaceSwitch = true } = {}) {
@@ -6057,6 +6470,16 @@ class MarkdownEditor {
     for (const p of paths || []) {
       if (!p || p.startsWith('-')) continue;
       try {
+        // SQLite db 文件按扩展名先行判定（未打开的 db 走 is_directory 会误判为文件）
+        if (this.isDbWorkspacePath(p)) {
+          if (dirOpened) {
+            ignoredDirs.push(p);
+            continue;
+          }
+          const opened = await this.maybeOpenDbWorkspace(p, { confirm: confirmWorkspaceSwitch });
+          if (opened) dirOpened = true;
+          continue;
+        }
         let isDir = false;
         try { isDir = await invoke('is_directory', { path: p }); }
         catch (_) { /* 非 Tauri 环境或路径不可访问，按文件处理 */ }
@@ -6081,8 +6504,14 @@ class MarkdownEditor {
   }
 
   closeFolder() {
+    const old = this.workspaceFolder;
+    if (old && this.isDbWorkspacePath(old)) {
+      try { invoke('db_close', { path: old }); } catch (e) { /* ignore */ }
+    }
     this.workspaceFolder = null;
     this.expandedFolders = new Set();
+    this.updateWorkspaceMenuState();
+    this._stopGitSync();
     this.saveSession();
     this.renderFolderTree();
     try { invoke('stop_watch'); } catch (e) { /* ignore */ }
@@ -6116,7 +6545,7 @@ class MarkdownEditor {
     if (!this.workspaceFolder) {
       const empty = document.createElement('button');
       empty.className = 'folder-empty';
-      empty.textContent = this.t('openFolder');
+      empty.textContent = this.t('openFolderOrDb');
       empty.addEventListener('click', () => this.openFolder());
       treeEl.appendChild(empty);
       return;
@@ -6385,6 +6814,7 @@ class MarkdownEditor {
       this.expandedFolders.add(dir);
       this.renderFolderTree();
       this.setStatus(this.t('fileNewFile') + ': ' + finalName);
+      this._noteFsChanged();
       // 新建后自动打开（编辑模式下直接进入可编辑状态）
       await this.openFilePath(newPath);
       if (this.viewMode !== 'preview') this.cm.focus();
@@ -6411,6 +6841,7 @@ class MarkdownEditor {
       this.expandedFolders.add(dir);
       this.renderFolderTree();
       this.setStatus(this.t('fileNewFolder') + ': ' + name);
+      this._noteFsChanged();
     } catch (e) {
       this.showToast(this.t('fileCreateFailed') + ': ' + e, 'danger');
     }
@@ -6444,6 +6875,7 @@ class MarkdownEditor {
       }
       this.renderFolderTree();
       this.setStatus(this.t('fileRename') + ': ' + oldName + ' → ' + newName);
+      this._noteFsChanged();
     } catch (e) {
       this.showToast(this.t('fileRenameFailed') + ': ' + e, 'danger');
     }
@@ -6464,6 +6896,7 @@ class MarkdownEditor {
       if (tabIdx >= 0) await this.closeTab(tabIdx);
       this.renderFolderTree();
       this.setStatus(this.t('fileDelete') + ': ' + name);
+      this._noteFsChanged();
     } catch (e) {
       this.showToast(this.t('fileDeleteFailed') + ': ' + e, 'danger');
     }
@@ -6518,6 +6951,7 @@ class MarkdownEditor {
       this.expandedFolders.add(ctx.path);
       this.renderFolderTree();
       this.setStatus(this.t('filePasteDone') + ': ' + this.baseName(dstPath));
+      this._noteFsChanged();
     } catch (e) {
       this.showToast(this.t('filePasteDone') + ': ' + e, 'danger');
     }
@@ -6698,6 +7132,7 @@ class MarkdownEditor {
       await this.refreshFileMeta(this.activeTab);
       this.setStatus(`${this.t('saved')}: ${this.activeTab.filePath}`);
       this.saveSession();
+      this._noteFsChanged();
     } catch (error) {
       this.setStatus(`${this.t('saveFailed')}: ${error}`);
     }
@@ -6723,6 +7158,7 @@ class MarkdownEditor {
       await this.refreshFileMeta(this.activeTab);
       this.setStatus(`${this.t('savedAs')}: ${path}`);
       this.saveSession();
+      this._noteFsChanged();
     } catch (error) {
       this.setStatus(`${this.t('saveFailed')}: ${error}`);
     }
@@ -9529,6 +9965,7 @@ input[type="checkbox"]:checked::after { display: none !important; }
         return false;
       }
     }
+    this._noteFsChanged();
     return true;
   }
 

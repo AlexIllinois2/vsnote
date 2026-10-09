@@ -7,6 +7,8 @@ use tauri::path::BaseDirectory;
 use tauri::WindowEvent;
 use md5::{Md5, Digest};
 
+mod sqlite_store;
+
 fn show_window(window: &tauri::WebviewWindow) {
     let _ = window.unminimize();
     let _ = window.show();
@@ -246,7 +248,7 @@ fn quit_app(app: tauri::AppHandle) {
 // 路径安全校验：拒绝写入/创建到系统关键目录或越界路径。
 // 编辑器需读写用户任意选中的文件，故不做全盘 scope 限制，
 // 仅在此拦截危险目标（启动目录、系统目录等持久化/RCE 向量）。
-fn safe_write_target(path: &str) -> Result<std::path::PathBuf, String> {
+pub(crate) fn safe_write_target(path: &str) -> Result<std::path::PathBuf, String> {
     let p = std::path::Path::new(path);
     let canonical = p
         .canonicalize()
@@ -306,6 +308,10 @@ fn safe_write_target(path: &str) -> Result<std::path::PathBuf, String> {
 
 #[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
+    // SQLite 工作区路由：路径属于已打开的 db 根时转调 sqlite_store
+    if let Some(root) = sqlite_store::match_root(&path) {
+        return sqlite_store::read_file(&root, &path);
+    }
     let raw = fs::read(&path).map_err(|e| {
         // 结构化错误 JSON，前端按 kind 映射到错误码（E_NOT_FOUND / E_PERMISSION / E_LOCKED / E_IO）
         let kind = if e.kind() == std::io::ErrorKind::NotFound {
@@ -387,7 +393,7 @@ async fn read_bundled_image_as_base64(app: tauri::AppHandle, filename: String) -
 
 // 解码字节为字符串：剥离 UTF-8 BOM → 优先 UTF-8 → 回退 GB18030（覆盖 GBK/GB2312/简繁）。
 // read_file 与 search_in_files 共用，确保非 UTF-8 文件也能被搜索。
-fn decode_bytes(raw: &[u8]) -> String {
+pub(crate) fn decode_bytes(raw: &[u8]) -> String {
     let stripped: &[u8] = if raw.len() >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF {
         &raw[3..]
     } else {
@@ -401,13 +407,16 @@ fn decode_bytes(raw: &[u8]) -> String {
 }
 
 #[derive(serde::Serialize, Clone, Copy)]
-struct FileMeta {
+pub(crate) struct FileMeta {
     mtime: u64,
     size: u64,
 }
 
 #[tauri::command]
 fn file_meta(path: String) -> Result<Option<FileMeta>, String> {
+    if let Some(root) = sqlite_store::match_root(&path) {
+        return sqlite_store::file_meta(&root, &path);
+    }
     let p = std::path::Path::new(&path);
     if !p.exists() {
         return Ok(None);
@@ -430,11 +439,14 @@ fn file_meta(path: String) -> Result<Option<FileMeta>, String> {
 
 #[tauri::command]
 fn is_directory(path: String) -> bool {
+    if let Some(root) = sqlite_store::match_root(&path) {
+        return sqlite_store::is_directory(&root, &path);
+    }
     std::path::Path::new(&path).is_dir()
 }
 
 #[derive(serde::Serialize, Clone)]
-struct DirEntryInfo {
+pub(crate) struct DirEntryInfo {
     name: String,
     path: String,
     is_dir: bool,
@@ -442,6 +454,9 @@ struct DirEntryInfo {
 
 #[tauri::command]
 fn list_dir(path: String) -> Result<Vec<DirEntryInfo>, String> {
+    if let Some(root) = sqlite_store::match_root(&path) {
+        return sqlite_store::list_dir(&root, &path);
+    }
     let p = std::path::Path::new(&path);
     let _ = safe_write_target(&path).map_err(|e| e)?; // 复用规范化以拒绝越界/关键目录
     let mut entries: Vec<DirEntryInfo> = Vec::new();
@@ -492,13 +507,13 @@ fn list_dir(path: String) -> Result<Vec<DirEntryInfo>, String> {
 }
 
 #[derive(serde::Serialize)]
-struct FileMatch {
+pub(crate) struct FileMatch {
     path: String,
     matches: Vec<LineMatch>,
 }
 
 #[derive(serde::Serialize)]
-struct LineMatch {
+pub(crate) struct LineMatch {
     line: usize,   // 1-based 行号
     col: usize,    // 1-based 字符列号
     line_text: String,
@@ -624,11 +639,17 @@ async fn search_in_files(
     use_regex: bool,
     extensions: Vec<String>,
 ) -> Result<Vec<FileMatch>, String> {
+    if let Some(root) = sqlite_store::match_root(&dir) {
+        return sqlite_store::search_in_files(&root, &dir, &pattern, case_sensitive, use_regex, &extensions);
+    }
     search_in_files_impl(&dir, &pattern, case_sensitive, use_regex, &extensions)
 }
 
 #[tauri::command]
 fn write_file(path: String, content: String) -> Result<(), String> {
+    if let Some(root) = sqlite_store::match_root(&path) {
+        return sqlite_store::write_file(&root, &path, &content);
+    }
     let _ = safe_write_target(&path)?;
     fs::write(&path, &content).map_err(|e| e.to_string())
 }
@@ -641,6 +662,9 @@ fn write_binary_file(path: String, contents: Vec<u8>) -> Result<(), String> {
 
 #[tauri::command]
 fn ensure_dir(path: String) -> Result<(), String> {
+    if let Some(root) = sqlite_store::match_root(&path) {
+        return sqlite_store::ensure_dir(&root, &path);
+    }
     let _ = safe_write_target(&path)?;
     fs::create_dir_all(&path).map_err(|e| e.to_string())
 }
@@ -660,6 +684,9 @@ fn is_path_within(src: &str, dst: &str) -> bool {
 
 #[tauri::command]
 fn rename_path(from: String, to: String) -> Result<(), String> {
+    if let Some(root) = sqlite_store::match_root(&from) {
+        return sqlite_store::rename_path(&root, &from, &to);
+    }
     let _ = safe_write_target(&from)?;
     let _ = safe_write_target(&to)?;
     fs::rename(&from, &to).map_err(|e| e.to_string())
@@ -667,6 +694,9 @@ fn rename_path(from: String, to: String) -> Result<(), String> {
 
 #[tauri::command]
 fn remove_path(path: String) -> Result<(), String> {
+    if let Some(root) = sqlite_store::match_root(&path) {
+        return sqlite_store::remove_path(&root, &path);
+    }
     let _ = safe_write_target(&path)?;
     let p = std::path::Path::new(&path);
     if p.is_dir() {
@@ -678,6 +708,9 @@ fn remove_path(path: String) -> Result<(), String> {
 
 #[tauri::command]
 fn copy_path(from: String, to: String) -> Result<(), String> {
+    if let Some(root) = sqlite_store::match_root(&from) {
+        return sqlite_store::copy_path(&root, &from, &to);
+    }
     let _ = safe_write_target(&from)?;
     let _ = safe_write_target(&to)?;
     // 纵深防御：后端也检查目标是否在源内部，防止绕过前端直接 invoke 导致递归复制
@@ -715,6 +748,9 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
 
 #[tauri::command]
 fn move_path(from: String, to: String) -> Result<(), String> {
+    if let Some(root) = sqlite_store::match_root(&from) {
+        return sqlite_store::move_path(&root, &from, &to);
+    }
     let _ = safe_write_target(&from)?;
     let _ = safe_write_target(&to)?;
     if is_path_within(&from, &to) {
@@ -736,6 +772,13 @@ struct WatcherState(pub Mutex<Option<RecommendedWatcher>>);
 
 #[tauri::command]
 fn watch_folder(path: String, app: tauri::AppHandle) -> Result<(), String> {
+    // SQLite 工作区无文件系统树可监听：丢弃旧 watcher 后空操作返回
+    if sqlite_store::match_root(&path).is_some() {
+        if let Ok(mut state) = app.state::<WatcherState>().0.lock() {
+            *state = None;
+        }
+        return Ok(());
+    }
     if let Ok(mut state) = app.state::<WatcherState>().0.lock() {
         *state = None;
     }
@@ -767,7 +810,7 @@ fn stop_watch(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[derive(serde::Serialize)]
-struct ImageAssetInfo {
+pub(crate) struct ImageAssetInfo {
     filename: String,
     width: u32,
     height: u32,
@@ -775,6 +818,10 @@ struct ImageAssetInfo {
 
 #[tauri::command]
 fn save_image_to_assets(bytes: Vec<u8>, ext: String, assets_dir: String) -> Result<ImageAssetInfo, String> {
+    // SQLite 工作区路由：assets_dir 形如 <db根>/assets，图片写入 node_blob
+    if let Some(root) = sqlite_store::match_root(&assets_dir) {
+        return sqlite_store::save_image_to_assets(&root, &assets_dir, &bytes, &ext);
+    }
     let hash = format!("{:x}", Md5::digest(&bytes));
     let filename = format!("{}.{}", hash, ext);
     let _ = safe_write_target(&assets_dir)?;
@@ -798,6 +845,12 @@ async fn fetch_image_as_base64(url: String) -> Result<String, String> {
     let bytes = if url.starts_with("http://") || url.starts_with("https://") {
         let resp = reqwest::get(&url).await.map_err(|e| e.to_string())?;
         resp.bytes().await.map_err(|e| e.to_string())?.to_vec()
+    } else if let Some(root) = sqlite_store::match_root(&url) {
+        // SQLite 工作区内的图片（node_blob）
+        return sqlite_store::read_file_bytes(&root, &url).map(|bytes| {
+            use base64::Engine;
+            base64::engine::general_purpose::STANDARD.encode(&bytes)
+        });
     } else {
         let path = std::path::Path::new(&url);
         let canonical = path.canonicalize().map_err(|e| format!("Cannot resolve path {}: {}", url, e))?;
@@ -818,6 +871,152 @@ fn app_data_dir(app: tauri::AppHandle) -> Result<String, String> {
         .map_err(|e| e.to_string())
         .map(|p| p.to_string_lossy().to_string())
 }
+
+// ====== SQLite 工作区管理命令 ======
+
+// 打开（或新建）SQLite db 工作区并注册。password 为 None / 空串表示按明文库打开；
+// 加密库未给密码返回 kind=PasswordRequired，密码错误返回 kind=WrongPassword，
+// 非 vsnote db 返回 kind=NotVsNoteDb（前端据此弹出密码框或提示）。
+#[tauri::command]
+async fn db_open(path: String, password: Option<String>) -> Result<serde_json::Value, String> {
+    let _ = safe_write_target(&path)?;
+    sqlite_store::open(&path, password)
+}
+
+// 关闭并注销 SQLite 工作区连接（切换/关闭工作区时调用，释放文件句柄）。
+#[tauri::command]
+fn db_close(path: String) -> Result<(), String> {
+    sqlite_store::close(&path);
+    Ok(())
+}
+
+// 导出为 SQLite db：src 可以是普通文件夹或已打开的 db 工作区根（db→db 可换密码/去密码）。
+// password 为 None / 空串时导出为明文库。
+#[tauri::command]
+async fn export_to_db(src: String, dest: String, password: Option<String>) -> Result<serde_json::Value, String> {
+    let _ = safe_write_target(&src)?;
+    let _ = safe_write_target(&dest)?;
+    sqlite_store::export_to_db(&src, &dest, password)
+}
+
+// 导出为文件夹：src 必须是已打开的 db 工作区根，dest 为目标目录（不存在则创建，非空则报错）。
+#[tauri::command]
+async fn export_to_folder(src: String, dest: String) -> Result<serde_json::Value, String> {
+    let _ = safe_write_target(&dest)?;
+    sqlite_store::export_to_folder(&src, &dest)
+}
+
+// ── Git 自动同步（仅真实文件夹 git 仓库工作区）────────────────────────
+// 通过系统 git CLI 执行（复用用户既有凭据/代理配置），不引入 git2 依赖。
+
+fn run_git(dir: &str, args: &[&str]) -> Result<std::process::Output, String> {
+    std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .map_err(|e| format!("无法运行 git（未安装或不在 PATH）: {e}"))
+}
+
+fn git_text(out: &std::process::Output) -> String {
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let e = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    if s.is_empty() { e } else { s }
+}
+
+fn is_git_repo(dir: &str) -> bool {
+    std::path::Path::new(dir).join(".git").exists()
+}
+
+// pull --rebase 失败兜底：中止 rebase 避免工作区卡在 rebase 状态
+const GIT_NO_UPSTREAM_MARKERS: [&str; 3] = ["no tracking information", "no upstream", "no configured"];
+
+#[tauri::command]
+async fn git_check(path: String) -> Result<bool, String> {
+    Ok(is_git_repo(&path))
+}
+
+// 保存后自动同步：add -A → commit → pull --rebase --autostash → push。
+// 无远端的本地仓库只做本地 commit。commit 无变更不算错误。
+#[tauri::command]
+async fn git_auto_sync(path: String, message: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if !is_git_repo(&path) {
+            return Err("不是 git 仓库".to_string());
+        }
+        let remotes = run_git(&path, &["remote"])?;
+        let has_remote = !String::from_utf8_lossy(&remotes.stdout).trim().is_empty();
+        let _ = run_git(&path, &["add", "-A"])?;
+        let c = run_git(&path, &["commit", "-m", &message])?;
+        let committed = c.status.success();
+        if !committed {
+            let out = git_text(&c);
+            if !out.contains("nothing to commit") && !out.contains("no changes added") {
+                return Err(format!(
+                    "git commit 失败: {out}（若提示身份未配置，请先执行 git config --global user.name / user.email）"
+                ));
+            }
+        }
+        let mut pulled = false;
+        let mut pushed = false;
+        if has_remote {
+            let p = run_git(&path, &["pull", "--rebase", "--autostash"])?;
+            if !p.status.success() {
+                let err = String::from_utf8_lossy(&p.stderr).to_lowercase();
+                if !GIT_NO_UPSTREAM_MARKERS.iter().any(|m| err.contains(m)) {
+                    let _ = run_git(&path, &["rebase", "--abort"]);
+                    return Err(format!("git pull --rebase 失败（已中止）: {}", git_text(&p)));
+                }
+            } else {
+                pulled = true;
+            }
+            let pu = run_git(&path, &["push"])?;
+            if !pu.status.success() {
+                return Err(format!("git push 失败: {}", git_text(&pu)));
+            }
+            pushed = true;
+        }
+        Ok(serde_json::json!({
+            "committed": committed, "pulled": pulled, "pushed": pushed, "noRemote": !has_remote
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// 定时自动拉取：工作区有未提交修改或无远端时跳过；返回 updated 表示 HEAD 是否前进。
+#[tauri::command]
+async fn git_auto_pull(path: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if !is_git_repo(&path) {
+            return Err("不是 git 仓库".to_string());
+        }
+        let remotes = run_git(&path, &["remote"])?;
+        if String::from_utf8_lossy(&remotes.stdout).trim().is_empty() {
+            return Ok(serde_json::json!({ "skipped": true, "reason": "noRemote" }));
+        }
+        let st = run_git(&path, &["status", "--porcelain"])?;
+        if !String::from_utf8_lossy(&st.stdout).trim().is_empty() {
+            return Ok(serde_json::json!({ "skipped": true, "reason": "dirty" }));
+        }
+        let before = run_git(&path, &["rev-parse", "HEAD"])?;
+        let p = run_git(&path, &["pull", "--rebase", "--autostash"])?;
+        if !p.status.success() {
+            let err = String::from_utf8_lossy(&p.stderr).to_lowercase();
+            if !GIT_NO_UPSTREAM_MARKERS.iter().any(|m| err.contains(m)) {
+                let _ = run_git(&path, &["rebase", "--abort"]);
+                return Err(format!("git pull 失败（已中止 rebase）: {}", git_text(&p)));
+            }
+            return Ok(serde_json::json!({ "skipped": true, "reason": "noUpstream" }));
+        }
+        let after = run_git(&path, &["rev-parse", "HEAD"])?;
+        let updated = String::from_utf8_lossy(&before.stdout).trim()
+            != String::from_utf8_lossy(&after.stdout).trim();
+        Ok(serde_json::json!({ "skipped": false, "updated": updated }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 
 #[tauri::command]
 fn generate_toc(content: String) -> String {
@@ -1674,7 +1873,14 @@ pub fn run() {
             generate_toc,
             search_in_files,
             read_bundled_file,
-            read_bundled_image_as_base64
+            read_bundled_image_as_base64,
+            db_open,
+            db_close,
+            export_to_db,
+            export_to_folder,
+            git_check,
+            git_auto_sync,
+            git_auto_pull
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

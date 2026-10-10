@@ -1821,8 +1821,115 @@ fn parse_alert(line: &str) -> Option<String> {
     }
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+/// 崩溃日志目录：%LOCALAPPDATA%/com.tizu.vsnote/logs
+fn crash_log_dir() -> Option<std::path::PathBuf> {
+    dirs::data_local_dir().map(|d| d.join("com.tizu.vsnote").join("logs"))
+}
+
+/// 安装 panic hook：把崩溃信息落盘。
+/// 发布版是 windows_subsystem = "windows"（无控制台），panic 会表现为"静默闪退"，
+/// 只有落盘日志才能事后定位。
+fn install_panic_hook() {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let payload = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| (*s).to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "<non-string payload>".to_string());
+        let loc = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown location>".to_string());
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let text = format!(
+            "vsnote panic\ntime: {}\nwhere: {}\npayload: {}\nbacktrace:\n{:?}\n",
+            stamp,
+            loc,
+            payload,
+            std::backtrace::Backtrace::force_capture()
+        );
+        if let Some(dir) = crash_log_dir() {
+            let _ = std::fs::create_dir_all(&dir);
+            let _ = std::fs::write(dir.join(format!("crash-{}.log", stamp)), &text);
+        }
+        prev(info);
+    }));
+}
+
+/// Windows 原生错误弹窗。用于 app 尚未起来（连 webview 都没有）时的致命错误提示。
+#[cfg(target_os = "windows")]
+fn show_fatal_dialog(body: &str) {
+    extern "system" {
+        fn MessageBoxW(
+            hwnd: *mut std::ffi::c_void,
+            text: *const u16,
+            caption: *const u16,
+            utype: u32,
+        ) -> i32;
+    }
+    fn wide(s: &str) -> Vec<u16> {
+        use std::os::windows::ffi::OsStrExt;
+        std::ffi::OsStr::new(s).encode_wide().chain(Some(0)).collect()
+    }
+    let caption = wide("vsnote 启动失败");
+    let text = wide(body);
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            text.as_ptr(),
+            caption.as_ptr(),
+            0x0000_0010u32, // MB_ICONERROR
+        );
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn show_fatal_dialog(body: &str) {
+    eprintln!("vsnote 启动失败: {}", body);
+}
+
+/// 把 WebView2 用户数据目录隔离改名。
+/// 该目录（%LOCALAPPDATA%/com.tizu.vsnote/EBWebView）损坏时 webview 会创建失败，
+/// 表现为"进程一闪即退"或"主窗口根本不出现"，改名后由 WebView2 重建即可自愈。
+fn quarantine_webview_udf() -> bool {
+    let Some(p) = dirs::data_local_dir().map(|d| d.join("com.tizu.vsnote").join("EBWebView")) else {
+        return false;
+    };
+    if !p.exists() {
+        return false;
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let dst = p.with_file_name(format!("EBWebView.bad.{}", stamp));
+    std::fs::rename(&p, &dst).is_ok()
+}
+
+fn report_fatal(err: &str) {
+    let log_hint = crash_log_dir()
+        .map(|d| format!("\n\n日志目录：{}", d.display()))
+        .unwrap_or_default();
+    let body = format!(
+        "{}\n\n如果提示涉及 WebView2 / msedgewebview2.exe，说明系统里的 \
+         Microsoft Edge WebView2 Runtime 已损坏，vsnote 无法创建窗口。\n\
+         请到「设置 → 应用 → Microsoft Edge WebView2 Runtime → 修改 → 修复」，\
+         或从微软官网重新下载安装 WebView2 Runtime 后重试。{}",
+        err, log_hint
+    );
+    if let Some(dir) = crash_log_dir() {
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(dir.join("startup-failure.log"), &body);
+    }
+    show_fatal_dialog(&body);
+}
+
+fn build_app() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
@@ -1845,8 +1952,14 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            let window = app.get_webview_window("main").unwrap();
-            window.show()?;
+            // 拿不到主窗口 / show 失败都不能让 setup 返回 Err —— 那会让整个 app 直接退出，
+            // 用户看到的就是"双击后闪退"。宁可窗口晚一点显示，也不要静默死掉。
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            } else {
+                eprintln!("[vsnote] setup: main window not found");
+            }
             Ok(())
         })
         .manage(WatcherState(Mutex::new(None)))
@@ -1882,8 +1995,34 @@ pub fn run() {
             git_auto_sync,
             git_auto_pull
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    install_panic_hook();
+
+    // 第一次尝试：正常启动
+    match build_app().build(tauri::generate_context!()) {
+        Ok(app) => {
+            app.run(|_app_handle, _event| {});
+            return;
+        }
+        Err(e) => {
+            let first = e.to_string();
+            // WebView2 用户数据目录损坏是自愈场景：隔离后重建一次。
+            if quarantine_webview_udf() {
+                match build_app().build(tauri::generate_context!()) {
+                    Ok(app) => {
+                        app.run(|_app_handle, _event| {});
+                        return;
+                    }
+                    Err(e2) => report_fatal(&format!("{}\n\n（清理 WebView2 缓存后重试仍然失败）{}", first, e2)),
+                }
+            } else {
+                report_fatal(&first);
+            }
+        }
+    }
 }
 
 #[cfg(test)]

@@ -18,7 +18,7 @@
         "center": true,
         "decorations": false,
         "devtools": true,
-        "visible": false,
+        "visible": true,
         "backgroundColor": "#f5f5f5"
       }
     ],
@@ -29,10 +29,9 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/tizuio/TizuMark/releases/latest/download/update-windows-x86_64.json",
-        "https://gitee.com/tizu/tizu-mark/raw/master/update-windows-x86_64.json"
+        "https://example.com/vsnote/releases/latest/download/update-windows-x86_64.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE5OUJDOEQwRTc3MzVCNjUKUldSbFczUG4wTWlicVppTUk2QW5oY1RxR0hrUzJKMGZyeE1Ta20rOWVCbWVEejdEOWx1K3ppcWgK"
+      "pubkey": ""
     }
   },
   "bundle": {

@@ -13,6 +13,15 @@ const HEAD_RENDER_CHAR_CAP = 1.5 * 1024 * 1024;
 const PREVIEW_WINDOW_LINES = 1200;  // 窗口源码行数上限
 const PREVIEW_WINDOW_LEAD = 200;    // 焦点行前预留行数（让焦点不至于贴顶）
 
+// 自动更新开关。
+// vsnote 已不再从上游 TizuMark 的 release 拉取更新（原 endpoints 指向
+// tizuio/TizuMark 与 gitee tizu/tizu-mark），改为自己的发布渠道。
+// 注意：tauri.conf.json 里的 plugins.updater.endpoints 目前仍是占位地址
+// （example.com），pubkey 也还是空的 —— 在换成真实地址并用 minisign 签名之前，
+// 点"检查更新"会失败，这是预期行为。
+// 接入步骤：1) 填真实 endpoint URL  2) 填 minisign pubkey  3) 发布时对安装包签名。
+const UPDATER_ENABLED = true;
+
 async function dialogOpen(options = {}) {
   return await invoke('plugin:dialog|open', { options });
 }
@@ -401,6 +410,7 @@ const I18N = {
     imagePasteFailed: '图片粘贴失败',
     linkAutoDetected: '（已从剪贴板检测到链接）',
     checkUpdate: '检查更新',
+    updateDisabled: '自动更新已关闭',
     updateChecking: '正在检查更新...',
     updateAvailable: '发现新版本',
     updateLatest: '已是最新版本',
@@ -790,6 +800,7 @@ const I18N = {
     imagePasteFailed: 'Image paste failed',
     linkAutoDetected: '(Link detected from clipboard)',
     checkUpdate: 'Check for Updates',
+    updateDisabled: 'Auto update is disabled',
     updateChecking: 'Checking for updates...',
     updateAvailable: 'Update Available',
     updateLatest: 'Up to Date',
@@ -939,7 +950,7 @@ class MarkdownEditor {
     this.updateWordCount();
     // 仅 Windows 平台有发布渠道（manifest 只含 windows-x86_64），
     // 其他平台自动检查只会抛 "platform not found" 噪音，跳过。
-    if (/Windows/i.test(navigator.userAgent)) {
+    if (UPDATER_ENABLED && /Windows/i.test(navigator.userAgent)) {
       setTimeout(() => this.checkUpdate(false), 5000);
     }
     this.updateSideButtons();
@@ -3909,7 +3920,10 @@ class MarkdownEditor {
       document.getElementById('help-menu').classList.add('hidden');
       this.showAbout();
     });
-    document.getElementById('btn-check-update').addEventListener('click', () => {
+    const btnCheckUpdate = document.getElementById('btn-check-update');
+    // 更新源已移除，菜单入口一并隐藏（不依赖 .hidden 类，避免样式表变动影响）
+    if (!UPDATER_ENABLED && btnCheckUpdate) btnCheckUpdate.style.display = 'none';
+    btnCheckUpdate?.addEventListener('click', () => {
       document.getElementById('help-menu').classList.add('hidden');
       this.checkUpdate(true);
     });
@@ -9211,6 +9225,10 @@ input[type="checkbox"]:checked::after { display: none !important; }
   }
 
   async checkUpdate(showUpToDate = false) {
+    if (!UPDATER_ENABLED) {
+      if (showUpToDate) this.showToast(this.t('updateDisabled'));
+      return;
+    }
     const checkId = (this._updateCheckId || 0) + 1;
     this._updateCheckId = checkId;
     this._updateDismissed = false;

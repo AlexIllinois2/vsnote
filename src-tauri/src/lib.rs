@@ -904,13 +904,34 @@ fn app_data_dir(app: tauri::AppHandle) -> Result<String, String> {
 
 // ====== SQLite 工作区管理命令 ======
 
+// 「记住密码」缓存文件：应用数据目录下 db-keys.json（内容是派生密钥，不是明文口令）。
+// 拿不到应用数据目录时返回 None —— 只是失去自动解锁，不能因此打不开 db。
+fn db_key_store(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    app.path().app_data_dir().ok().map(|d| d.join("db-keys.json"))
+}
+
 // 打开（或新建）SQLite db 工作区并注册。password 为 None / 空串表示按明文库打开；
 // 加密库未给密码返回 kind=PasswordRequired，密码错误返回 kind=WrongPassword，
 // 非 vsnote db 返回 kind=NotVsNoteDb（前端据此弹出密码框或提示）。
+// 未给密码时先用 db_key_store 里记住的派生密钥尝试自动解锁。
 #[tauri::command]
-async fn db_open(path: String, password: Option<String>) -> Result<serde_json::Value, String> {
+async fn db_open(app: tauri::AppHandle, path: String, password: Option<String>) -> Result<serde_json::Value, String> {
     let _ = safe_write_target(&path)?;
-    sqlite_store::open(&path, password)
+    sqlite_store::open(&path, password, db_key_store(&app).as_deref())
+}
+
+// 记住当前已打开 db 的派生密钥（密码校验通过后由用户确认调用）。
+#[tauri::command]
+fn db_remember_password(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let store = db_key_store(&app).ok_or_else(|| "无法定位应用数据目录".to_string())?;
+    sqlite_store::remember_key(&path, &store)
+}
+
+// 清除已记住的密码；返回是否确有缓存被删除（无缓存时前端提示"本来就没有"）。
+#[tauri::command]
+fn db_forget_password(app: tauri::AppHandle, path: String) -> Result<bool, String> {
+    let store = db_key_store(&app).ok_or_else(|| "无法定位应用数据目录".to_string())?;
+    sqlite_store::forget_key(&path, &store)
 }
 
 // 关闭并注销 SQLite 工作区连接（切换/关闭工作区时调用，释放文件句柄）。
@@ -2020,6 +2041,8 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             read_bundled_image_as_base64,
             db_open,
             db_close,
+            db_remember_password,
+            db_forget_password,
             export_to_db,
             export_to_folder,
             git_check,

@@ -433,7 +433,8 @@ const I18N = {
     saveAll: '保存全部',
     discardAll: '放弃全部',
     fileOpened: '已打开: {name}',
-    openFolder: '打开文件夹',
+    openFolder: '打开文件夹…',
+    openDb: '打开 SQLite db…',
     locateActiveFile: '定位到当前文件',
     files: '文件',
     closeFolder: '关闭文件夹',
@@ -455,6 +456,15 @@ const I18N = {
     dbCreatePasswordMsg: '为导出的 db 设置密码（留空则不加密）',
     dbPasswordRequiredMsg: '「{name}」已加密，请输入密码',
     dbWrongPasswordMsg: '密码错误，请重新输入',
+    dbRememberTitle: '记住密码',
+    dbRememberMsg: '下次打开「{name}」时不再询问密码？\n本机只保存派生密钥，不保存明文口令',
+    dbRememberOk: '记住',
+    dbRememberNo: '不记住',
+    dbPasswordRemembered: '已记住密码，下次自动解锁',
+    dbRememberFailed: '记住密码失败',
+    forgetDbPassword: '清除已记住的密码',
+    dbPasswordForgotten: '已清除记住的密码',
+    dbPasswordNoneRemembered: '本机没有记住过该 db 的密码',
     dbNotVsNoteDb: '所选文件不是 vsnote SQLite 数据库',
     dbFileFilter: 'SQLite db',
     dbTargetExists: '目标文件已存在，请换个位置或文件名',
@@ -832,7 +842,8 @@ const I18N = {
     saveAll: 'Save All',
     discardAll: 'Discard All',
     fileOpened: 'Opened: {name}',
-    openFolder: 'Open Folder',
+    openFolder: 'Open Folder…',
+    openDb: 'Open SQLite db…',
     locateActiveFile: 'Locate Active File',
     files: 'Files',
     closeFolder: 'Close Folder',
@@ -854,6 +865,15 @@ const I18N = {
     dbCreatePasswordMsg: 'Set a password for the exported db (leave empty for no encryption)',
     dbPasswordRequiredMsg: '"{name}" is encrypted. Enter the password',
     dbWrongPasswordMsg: 'Wrong password. Try again',
+    dbRememberTitle: 'Remember Password',
+    dbRememberMsg: 'Stop asking for the password when "{name}" opens next time?\nThis machine stores the derived key only, never the plain password',
+    dbRememberOk: 'Remember',
+    dbRememberNo: 'Do not remember',
+    dbPasswordRemembered: 'Password remembered. It will unlock automatically next time',
+    dbRememberFailed: 'Failed to remember password',
+    forgetDbPassword: 'Clear Remembered Password',
+    dbPasswordForgotten: 'Remembered password cleared',
+    dbPasswordNoneRemembered: 'No remembered password for this db on this machine',
     dbNotVsNoteDb: 'The selected file is not a vsnote SQLite database',
     dbFileFilter: 'SQLite db',
     dbTargetExists: 'Target file already exists. Choose another location or name',
@@ -1100,7 +1120,9 @@ class MarkdownEditor {
     updateMenuText('btn-export-pdf', t('exportPDF'));
     updateMenuText('btn-export-db', t('exportDb'));
     updateMenuText('btn-export-folder', t('exportFolder'));
-    updateMenuText('btn-open-folder', t('openFolderOrDb'));
+    updateMenuText('btn-forget-db-password', t('forgetDbPassword'));
+    updateMenuText('btn-open-folder', t('openFolder'));
+    updateMenuText('btn-open-db', t('openDb'));
     updateMenuText('btn-shortcuts', t('shortcuts'));
     updateMenuText('btn-settings', t('settings'));
     updateMenuText('btn-user-guide', t('userGuide'));
@@ -3924,6 +3946,13 @@ class MarkdownEditor {
       document.getElementById('file-menu').classList.add('hidden');
       this.openFolder();
     });
+    const btnOpenDb = document.getElementById('btn-open-db');
+    if (btnOpenDb) {
+      btnOpenDb.addEventListener('click', () => {
+        document.getElementById('file-menu').classList.add('hidden');
+        this.openDbFile();
+      });
+    }
     // 最近文件子菜单交互
     document.getElementById('btn-recent').addEventListener('mouseenter', () => {
       this.showRecentSubmenu();
@@ -4004,6 +4033,13 @@ class MarkdownEditor {
       document.getElementById('file-menu').classList.add('hidden');
       this.exportDbWorkspaceToFolder();
     });
+    const btnForgetPw = document.getElementById('btn-forget-db-password');
+    if (btnForgetPw) {
+      btnForgetPw.addEventListener('click', () => {
+        document.getElementById('file-menu').classList.add('hidden');
+        this.forgetRememberedDbPassword();
+      });
+    }
     document.getElementById('btn-settings').addEventListener('click', () => {
       document.getElementById('file-menu').classList.add('hidden');
       this.showSettings();
@@ -5704,9 +5740,11 @@ class MarkdownEditor {
     });
   }
 
-  showConfirmDialog(title, message, action = null) {
+  showConfirmDialog(title, message, action = null, labels = null) {
     return Dialogs.showConfirmDialog({
       title, message, action,
+      confirmLabel: labels && labels.confirm,
+      cancelLabel: labels && labels.cancel,
       t: (k, p) => this.t(k, p),
       showToast: (msg, type) => this.showToast(msg, type),
       doc: document,
@@ -6221,31 +6259,47 @@ class MarkdownEditor {
     }
   }
 
+  // 菜单「打开文件夹…」：直接选文件夹作为工作区
   async openFolder() {
+    await this._pickFolderAndOpen();
+  }
+
+  // 菜单「打开 SQLite db…」：直接选 db 文件作为工作区
+  async openDbFile() {
+    await this._pickDbAndOpen();
+  }
+
+  // 空状态 / 欢迎入口：先选工作区类型，再走对应入口
+  async openWorkspace() {
     const choice = await this.showOpenTargetDialog();
-    if (choice === 'folder') {
-      try {
-        const selected = await dialogOpen({ directory: true });
-        if (!selected) return;
-        const folderPath = Array.isArray(selected) ? selected[0] : selected;
-        if (!folderPath) return;
-        await this.openFolderPath(folderPath);
-      } catch (e) {
-        this.setStatus(this.t('openFailed') + ': ' + e);
-      }
-    } else if (choice === 'db') {
-      try {
-        const selected = await dialogOpen({
-          multiple: false,
-          filters: [{ name: this.t('dbFileFilter'), extensions: ['db', 'sqlite', 'sqlite3', 'vsdb'] }]
-        });
-        if (!selected) return;
-        const dbPath = Array.isArray(selected) ? selected[0] : selected;
-        if (!dbPath) return;
-        await this.openDbWorkspace(dbPath);
-      } catch (e) {
-        this.setStatus(this.t('openFailed') + ': ' + e);
-      }
+    if (choice === 'folder') await this._pickFolderAndOpen();
+    else if (choice === 'db') await this._pickDbAndOpen();
+  }
+
+  async _pickFolderAndOpen() {
+    try {
+      const selected = await dialogOpen({ directory: true });
+      if (!selected) return;
+      const folderPath = Array.isArray(selected) ? selected[0] : selected;
+      if (!folderPath) return;
+      await this.openFolderPath(folderPath);
+    } catch (e) {
+      this.setStatus(this.t('openFailed') + ': ' + e);
+    }
+  }
+
+  async _pickDbAndOpen() {
+    try {
+      const selected = await dialogOpen({
+        multiple: false,
+        filters: [{ name: this.t('dbFileFilter'), extensions: ['db', 'sqlite', 'sqlite3', 'vsdb'] }]
+      });
+      if (!selected) return;
+      const dbPath = Array.isArray(selected) ? selected[0] : selected;
+      if (!dbPath) return;
+      await this.openDbWorkspace(dbPath);
+    } catch (e) {
+      this.setStatus(this.t('openFailed') + ': ' + e);
     }
   }
 
@@ -6386,9 +6440,13 @@ class MarkdownEditor {
   // 确保 SQLite db 已打开（含密码重试循环）；取消 / 失败返回 false
   async _ensureDbOpen(dbPath) {
     let password = null;
+    // 本次是否由用户手输密码并通过校验 —— 决定要不要问「记住密码」。
+    // 命中本机缓存密钥的自动解锁不会置位，因此不会再打扰用户。
+    let typedPassword = false;
     for (;;) {
       try {
         await invoke('db_open', { path: dbPath, password });
+        if (typedPassword) await this._askRememberDbPassword(dbPath);
         return true;
       } catch (err) {
         const kind = this._dbErrorKind(err);
@@ -6410,7 +6468,41 @@ class MarkdownEditor {
           return false;
         }
         if (!password) return false; // 取消或空密码视为放弃打开
+        typedPassword = true;
       }
+    }
+  }
+
+  // 密码校验通过后询问一次「是否记住密码」。记住的是后端派生的 32 字节密钥
+  // （应用数据目录 db-keys.json），不是明文口令；取消 / 「不记住」都不落盘任何凭据。
+  async _askRememberDbPassword(dbPath) {
+    const remember = await this.showConfirmDialog(
+      this.t('dbRememberTitle'),
+      this.t('dbRememberMsg', { name: this.baseName(dbPath) }),
+      null,
+      { confirm: this.t('dbRememberOk'), cancel: this.t('dbRememberNo') }
+    );
+    if (!remember) return;
+    try {
+      await invoke('db_remember_password', { path: dbPath });
+      this.showToast(this.t('dbPasswordRemembered'), 'success');
+    } catch (e) {
+      this.showToast(this.t('dbRememberFailed') + ': ' + this._dbErrorMessage(String(e)), 'danger');
+    }
+  }
+
+  // 菜单「清除已记住的密码」：删除本机缓存的派生密钥，下次打开该 db 重新询问密码
+  async forgetRememberedDbPassword() {
+    const dbPath = this.workspaceFolder;
+    if (!dbPath || !this.isDbWorkspacePath(dbPath)) return;
+    try {
+      const removed = await invoke('db_forget_password', { path: dbPath });
+      this.showToast(
+        removed ? this.t('dbPasswordForgotten') : this.t('dbPasswordNoneRemembered'),
+        removed ? 'success' : 'info'
+      );
+    } catch (e) {
+      this.showToast(this.t('failed') + ': ' + this._dbErrorMessage(String(e)), 'danger');
     }
   }
 
@@ -6466,6 +6558,8 @@ class MarkdownEditor {
     const folderItem = document.getElementById('btn-export-folder');
     if (dbItem) dbItem.classList.toggle('hidden', !this.workspaceFolder || isDb);
     if (folderItem) folderItem.classList.toggle('hidden', !isDb);
+    const forgetItem = document.getElementById('btn-forget-db-password');
+    if (forgetItem) forgetItem.classList.toggle('hidden', !isDb);
   }
 
   // 导出前处理未保存修改：保存 / 放弃 / 取消；返回是否可以继续导出
@@ -6689,7 +6783,7 @@ class MarkdownEditor {
       const empty = document.createElement('button');
       empty.className = 'folder-empty';
       empty.textContent = this.t('openFolderOrDb');
-      empty.addEventListener('click', () => this.openFolder());
+      empty.addEventListener('click', () => this.openWorkspace());
       treeEl.appendChild(empty);
       return;
     }

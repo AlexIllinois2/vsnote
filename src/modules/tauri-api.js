@@ -24,8 +24,9 @@
     'get_cli_args', 'quit_app', 'open_devtools',
     // dev2 文件树右键操作：重命名 / 删除 / 复制 / 移动（lib.rs 已注册对应 handler）
     'rename_path', 'remove_path', 'copy_path', 'move_path', 'reveal_in_file_manager',
-    // SQLite 工作区：打开/关闭 db、文件夹与 db 互导
-    'db_open', 'db_close', 'export_to_db', 'export_to_folder',
+    // SQLite 工作区：打开/关闭 db、记住/清除密码（缓存派生密钥）、文件夹与 db 互导
+    'db_open', 'db_close', 'db_remember_password', 'db_forget_password',
+    'export_to_db', 'export_to_folder',
     // Git 自动同步：仓库检测 / 保存后 commit+push / 定时 pull
     'git_check', 'git_auto_sync', 'git_auto_pull',
   ];

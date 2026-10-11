@@ -2,7 +2,7 @@
 // 设计：纯 DOM + 回调，不依赖渲染管线；i18n(t) 与提示(showToast)通过 opts 注入，
 // 与 preview-post / outline 模块的注入风格一致，降低改动爆炸半径。
 //   - showSaveDialog({ title, message, saveLabel, discardLabel, cancelLabel, t, doc }): Promise<'save'|'discard'|'cancel'>
-//   - showConfirmDialog({ title, message, action, t, showToast, doc }): Promise<boolean>
+//   - showConfirmDialog({ title, message, action, confirmLabel, cancelLabel, t, showToast, doc }): Promise<boolean>
 
 function showSaveDialog(opts) {
   const doc = opts.doc || document;
@@ -61,10 +61,17 @@ function showConfirmDialog(opts) {
     // 安全：message 一律按纯文本渲染（历史 bug：innerHTML 会让含 <img onerror> 的
     // 目录路径 / 用户文本在确认框执行，跨平台路径注入 XSS）。需要换行用 \n + pre-line。
     doc.getElementById('confirm-dialog-message').textContent = opts.message || '';
+    // 按钮文案可按次覆盖（如「记住密码 / 不记住」），关闭时还原，避免污染其他确认框
+    const origConfirm = confirmBtn.innerHTML;
+    const origCancel = cancelBtn.innerHTML;
+    if (opts.confirmLabel) confirmBtn.textContent = opts.confirmLabel;
+    if (opts.cancelLabel) cancelBtn.textContent = opts.cancelLabel;
     dialog.classList.remove('hidden');
 
     const cleanup = () => {
       dialog.classList.add('hidden');
+      confirmBtn.innerHTML = origConfirm;
+      cancelBtn.innerHTML = origCancel;
       confirmBtn.removeEventListener('click', onConfirm);
       cancelBtn.removeEventListener('click', onCancel);
     };

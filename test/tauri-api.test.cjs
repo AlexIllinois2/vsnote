@@ -38,7 +38,13 @@ test('COMMANDS 集合 == lib.rs generate_handler! 注册集合（C17，前后端
   const expected = [...TauriApi.COMMANDS].sort();
   assert.deepEqual(names, expected,
     `前后端命令集合必须一致。差异：${JSON.stringify(names)} vs ${JSON.stringify(expected)}`);
-  assert.equal(expected.length, 31, '应有 31 个自定义命令（文件树右键 5 个 + SQLite 工作区 4 个 + Git 同步 3 个）');
+  assert.equal(expected.length, 33,
+    `命令数应为 33（文件树右键 5 个 + SQLite 工作区 6 个 + Git 同步 3 个），实际 ${expected.length}`);
+  // 数量单独断言后，再锁住「新增的都是哪两个 db 密码命令」，避免只改数字不改语义
+  for (const cmd of ['db_remember_password', 'db_forget_password']) {
+    assert.ok(expected.includes(cmd), `COMMANDS 应包含 ${cmd}`);
+    assert.ok(names.includes(cmd), `lib.rs generate_handler! 应注册 ${cmd}`);
+  }
 });
 
 test('generate_handler! 解析失败必须显式抛错（N27）', () => {

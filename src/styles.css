@@ -3037,9 +3037,12 @@ body.is-resizing .side-btn {
   z-index: 1001;
 }
 
-/* EULA 协议对话框、工作区切换确认框必须在加载遮罩（z-index: 10000）之上，
-   否则加载遮罩会盖住确认框导致点不到、卡在加载页 */
+/* EULA 协议对话框、工作区切换确认框、db 密码框必须在加载遮罩（z-index: 10000）之上，
+   否则加载遮罩会盖住它们导致点不到、卡在加载页。
+   db 密码框尤其关键：启动恢复会话时 restoreSession → _ensureDbOpen 会在加载流程中
+   弹它，被遮罩盖住就表现为"打开加密 db 后界面死掉"（只有 20s 安全定时器强制隐藏遮罩才露出来） */
 #eula-dialog.dialog-overlay,
+#db-password-dialog.dialog-overlay,
 #confirm-dialog.dialog-overlay {
   z-index: 20000;
 }

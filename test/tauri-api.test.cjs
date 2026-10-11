@@ -38,7 +38,7 @@ test('COMMANDS 集合 == lib.rs generate_handler! 注册集合（C17，前后端
   const expected = [...TauriApi.COMMANDS].sort();
   assert.deepEqual(names, expected,
     `前后端命令集合必须一致。差异：${JSON.stringify(names)} vs ${JSON.stringify(expected)}`);
-  assert.equal(expected.length, 24, '应有 24 个自定义命令（dev2 文件树右键操作新增 rename/remove/copy/move_path）');
+  assert.equal(expected.length, 31, '应有 31 个自定义命令（文件树右键 5 个 + SQLite 工作区 4 个 + Git 同步 3 个）');
 });
 
 test('generate_handler! 解析失败必须显式抛错（N27）', () => {
@@ -46,7 +46,7 @@ test('generate_handler! 解析失败必须显式抛错（N27）', () => {
   assert.throws(() => parseHandlerCommands('generate_handler![unclosed'), /未闭合/);
 });
 
-test('24 个自定义命令方法由 COMMANDS 生成并原样透传（C5/N29）', async () => {
+test('COMMANDS 中每个自定义命令都生成方法并原样透传（C5/N29）', async () => {
   const calls = [];
   global.window = {
     __TAURI__: { core: { invoke: async (cmd, args) => { calls.push({ cmd, args }); return 'R:' + cmd; } } },

@@ -39,3 +39,8 @@ sha2 = "0.10"
 
 [patch.crates-io]
 brotli = { git = "https://github.com/dropbox/rust-brotli", rev = "9cbed81a1a098fcd4ffcf956429dce6154415970" }
+# 本机 Windows 构建专用：schemars 0.8.22 在 preserve_order feature 下与 indexmap 1.x
+# 冲突（E0107: struct takes 3 generic arguments but 2 were supplied）。
+# 用已把 indexmap 依赖升到 2.x 的本地副本替换；该副本位于 C:/Users/45574/vsbuild/patches/schemars。
+# 若在没有该副本的机器上构建，删掉这一行即可（Linux/macOS 不受影响）。
+schemars = { path = "C:/Users/45574/vsbuild/patches/schemars" }

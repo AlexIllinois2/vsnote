@@ -4,6 +4,23 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
+  <!-- 首屏前确定明暗：app.js 加载完成前 data-theme 缺失会让暗色用户先闪一屏白。
+       跟随系统（默认）时以 webview 的 prefers-color-scheme 为准，与 applyThemeMode 判定一致。 -->
+  <script>
+    (function () {
+      var mode = 'system', scheme = '';
+      try {
+        var s = JSON.parse(localStorage.getItem('tizumark-settings') || '{}') || {};
+        if (s.themeMode === 'light' || s.themeMode === 'dark' || s.themeMode === 'system') mode = s.themeMode;
+        if (typeof s.colorScheme === 'string' && /^[a-z-]{1,16}$/.test(s.colorScheme)) scheme = s.colorScheme;
+      } catch (e) { /* 设置损坏：按默认（跟随系统 + 基准配色） */ }
+      var dark = mode === 'dark' ||
+        (mode !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      var root = document.documentElement;
+      root.setAttribute('data-theme', dark ? 'dark' : 'light');
+      if (scheme) root.setAttribute('data-color-scheme', scheme);
+    })();
+  </script>
   <title>TizuMark</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="lib/codemirror/codemirror.css">
@@ -97,125 +114,105 @@
     <header class="header">
       <div class="toolbar">
         <div class="toolbar-left">
-          <img id="app-icon" class="app-icon" src="app-icon.png" alt="TizuMark" draggable="false">
+          <button id="btn-app-sidebar-toggle" class="app-sidebar-toggle" type="button" title="显示/隐藏侧边栏" aria-label="显示/隐藏侧边栏" aria-pressed="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="2"/>
+              <line x1="9.5" y1="4" x2="9.5" y2="20"/>
+            </svg>
+          </button>
           <div class="dropdown">
             <button id="btn-file" class="toolbar-btn" title="文件">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
               <span>文件</span>
               <span class="dropdown-arrow">&#9662;</span>
             </button>
-            <div class="dropdown-menu hidden" id="file-menu">
+            <div class="dropdown-menu menu-list hidden" id="file-menu">
               <div class="dropdown-item" id="btn-new">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 15h6"/><path d="M12 18v-6"/></svg>
                 <span>新建</span>
                 <span class="shortcut">Ctrl+N</span>
               </div>
               <div class="dropdown-item" id="btn-open">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
                 <span>打开</span>
                 <span class="shortcut">Ctrl+O</span>
               </div>
               <div class="dropdown-item" id="btn-open-folder">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M2 8h20"/><path d="M6 12h4"/><path d="M6 16h4"/></svg>
                 <span>打开文件夹或 SQLite db</span>
               </div>
               <div class="dropdown-item dropdown-submenu-trigger" id="btn-recent" data-submenu="recent-files-submenu">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 <span>打开最近的文件</span>
                 <span class="submenu-arrow">&#9656;</span>
               </div>
-              <div class="dropdown-menu submenu hidden" id="recent-files-submenu"><!-- 动态渲染 --></div>
+              <div class="dropdown-menu submenu menu-list hidden" id="recent-files-submenu"><!-- 动态渲染 --></div>
               <div class="dropdown-item" id="btn-save">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>
                 <span>保存</span>
                 <span class="shortcut">Ctrl+S</span>
               </div>
               <div class="dropdown-item" id="btn-save-as">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
                 <span>另存为</span>
                 <span class="shortcut"></span>
               </div>
               <div class="dropdown-separator"></div>
               <div class="dropdown-item" id="btn-reload-menu">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="23 4 23 10 17 10"/>
-                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                </svg>
                 <span>重新加载</span>
                 <span class="shortcut">Ctrl+R</span>
               </div>
               <div class="dropdown-separator"></div>
               <div class="dropdown-item" id="btn-export-html">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
                 <span>导出 HTML</span>
               </div>
               <div class="dropdown-item" id="btn-export-img">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
                 <span>导出长图</span>
               </div>
               <div class="dropdown-item" id="btn-export-pdf">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
                 <span>导出 PDF</span>
                 <span class="shortcut"></span>
               </div>
               <div class="dropdown-item hidden" id="btn-export-db">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
                 <span>导出为 SQLite db…</span>
                 <span class="shortcut"></span>
               </div>
               <div class="dropdown-item hidden" id="btn-export-folder">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M2 8h20"/></svg>
                 <span>导出为文件夹…</span>
                 <span class="shortcut"></span>
               </div>
               <div class="dropdown-item" id="btn-shortcuts">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></svg>
                 <span>快捷键设置</span>
               </div>
               <div class="dropdown-separator"></div>
               <div class="dropdown-item" id="btn-settings">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
                 <span>设置</span>
               </div>
             </div>
           </div>
           <div class="dropdown">
             <button id="btn-view" class="toolbar-btn" title="视图">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
               <span>视图</span>
               <span class="dropdown-arrow">&#9662;</span>
             </button>
-            <div class="dropdown-menu hidden" id="view-menu">
+            <div class="dropdown-menu menu-list hidden" id="view-menu">
               <div class="dropdown-item" id="btn-sidebar-toggle">
                 <span class="dropdown-check" id="sidebar-check"></span>
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
                 <span>侧边栏</span>
               </div>
             </div>
           </div>
           <div class="dropdown">
             <button id="btn-help" class="toolbar-btn" title="帮助">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
               <span>帮助</span>
               <span class="dropdown-arrow">&#9662;</span>
             </button>
-            <div class="dropdown-menu hidden" id="help-menu">
+            <div class="dropdown-menu menu-list hidden" id="help-menu">
               <div class="dropdown-item" id="btn-user-guide">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
                 <span>使用说明</span>
               </div>
               <div class="dropdown-item" id="btn-check-update">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
                 <span>检查更新</span>
               </div>
               <div class="dropdown-separator"></div>
               <div class="dropdown-item" id="btn-devtools">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
                 <span>开发者工具</span>
                 <span class="shortcut">Ctrl+Shift+I</span>
               </div>
               <div class="dropdown-item" id="btn-about">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
                 <span>关于</span>
               </div>
             </div>
@@ -248,7 +245,6 @@
               <path d="M2 12h2"/><path d="M20 12h2"/>
               <path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>
             </svg>
-            <span id="theme-text">明亮</span>
           </button>
           <div class="window-controls">
             <button id="btn-minimize" class="window-btn" title="最小化">
@@ -381,8 +377,8 @@
     <main class="editor-container">
       <div id="outline-sidebar" class="outline-sidebar">
         <div class="sidebar-tabs">
-          <button class="sidebar-tab active" data-tab="outline" id="tab-outline" data-i18n="outline"><span class="lbl">大纲</span></button>
-          <button class="sidebar-tab" data-tab="files" id="tab-files" data-i18n="files"><span class="lbl">文件</span></button>
+          <button class="sidebar-tab active" data-tab="files" id="tab-files" data-i18n="files"><span class="lbl">文件</span></button>
+          <button class="sidebar-tab" data-tab="outline" id="tab-outline" data-i18n="outline"><span class="lbl">大纲</span></button>
           <button id="outline-close" class="outline-close-btn" title="关闭">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
@@ -1076,6 +1072,20 @@
               <option value="30">每 30 分钟</option>
             </select>
           </div>
+          <div class="settings-row settings-row-stacked">
+            <label>自动保存</label>
+            <select id="set-autosave">
+              <option value="0" selected>关闭</option>
+              <option value="1">停止输入后 1 秒</option>
+              <option value="3">停止输入后 3 秒</option>
+              <option value="5">停止输入后 5 秒</option>
+              <option value="10">停止输入后 10 秒</option>
+            </select>
+            <p class="form-hint" id="setting-autosave-hint">
+              <svg class="hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              <span class="hint-text">开启后，停止输入若干秒会自动写入当前文件，不必再按 Ctrl+S。未保存过的草稿不会被弹窗打断，仍需要你手动命名保存。</span>
+            </p>
+          </div>
           <div class="settings-row">
             <label>滚动同步</label>
             <label class="toggle"><input type="checkbox" id="set-scroll-sync" checked><span class="toggle-slider"></span></label>
@@ -1258,8 +1268,22 @@
     <div class="context-menu-separator"></div>
     <div class="context-menu-item" data-action="file-rename"><span>重命名</span><span class="shortcut">F2</span></div>
     <div class="context-menu-item" data-action="file-copy-path"><span>复制路径</span></div>
+    <div class="context-menu-item" data-action="file-reveal"><span>在文件管理器中显示</span></div>
     <div class="context-menu-separator"></div>
     <div class="context-menu-item" data-action="file-delete" style="color:var(--color-danger)"><span>删除</span><span class="shortcut">Delete</span></div>
+  </div>
+
+  <!-- 文件树空白处右键菜单：目标目录为工作区根目录（VSCode 行为） -->
+  <div id="context-menu-file-tree-blank" class="context-menu hidden">
+    <div class="context-menu-item" data-action="file-new-file"><span>新建文件</span><span class="shortcut">Ctrl+Alt+N</span></div>
+    <div class="context-menu-item" data-action="file-new-folder"><span>新建文件夹</span><span class="shortcut">Ctrl+Shift+N</span></div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" data-action="file-paste"><span>粘贴</span><span class="shortcut">Ctrl+V</span></div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" data-action="file-reveal"><span>在文件管理器中显示</span></div>
+    <div class="context-menu-item" data-action="file-refresh"><span>刷新</span></div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" data-action="file-close-folder"><span>关闭文件夹</span></div>
   </div>
 
   <div id="loading-overlay" class="loading-overlay">

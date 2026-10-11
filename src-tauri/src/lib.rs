@@ -472,21 +472,9 @@ fn list_dir(path: String) -> Result<Vec<DirEntryInfo>, String> {
         };
         let is_dir = meta.is_dir();
         let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') {
-            continue;
-        }
-        let ext = if is_dir {
-            String::new()
-        } else {
-            std::path::Path::new(&name)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_lowercase()
-        };
-        if !is_dir && !["md", "markdown", "txt"].contains(&ext.as_str()) {
-            continue;
-        }
+        // 侧边文件树按需展示全部条目：不隐藏点文件/文件夹，也不按扩展名过滤。
+        // （早期版本这里会跳过 . 开头且只保留 md/markdown/txt，导致 .obsidian、
+        // .gitignore、图片附件等在工作区里完全看不见。）
         entries.push(DirEntryInfo {
             name,
             path: entry.path().to_string_lossy().to_string(),
@@ -744,6 +732,48 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
         }
     }
     Ok(())
+}
+
+// 在系统文件管理器中显示目标：目录直接打开，文件则定位并选中。
+// SQLite 虚拟工作区内的路径在磁盘上不存在，此时退化为显示其 .db 宿主文件。
+#[tauri::command]
+fn reveal_in_file_manager(path: String) -> Result<(), String> {
+    let target = sqlite_store::match_root(&path).unwrap_or_else(|| path.clone());
+    let is_dir = std::path::Path::new(&target).is_dir();
+
+    // cfg! 是运行时布尔，三个分支都会参与类型检查，避免 #[cfg] 块带来的平台差异噪音
+    let mut cmd = if cfg!(target_os = "windows") {
+        let mut c = std::process::Command::new("explorer");
+        if is_dir {
+            c.arg(&target);
+        } else {
+            c.arg(format!("/select,{}", target));
+        }
+        c
+    } else if cfg!(target_os = "macos") {
+        let mut c = std::process::Command::new("open");
+        if !is_dir {
+            c.arg("-R");
+        }
+        c.arg(&target);
+        c
+    } else {
+        let mut c = std::process::Command::new("xdg-open");
+        if is_dir {
+            c.arg(&target);
+        } else {
+            let parent = std::path::Path::new(&target)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|| target.clone());
+            c.arg(parent);
+        }
+        c
+    };
+
+    cmd.spawn()
+        .map(|_| ())
+        .map_err(|e| format!("打开文件管理器失败: {}", e))
 }
 
 #[tauri::command]
@@ -1978,6 +2008,7 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             remove_path,
             copy_path,
             move_path,
+            reveal_in_file_manager,
             watch_folder,
             stop_watch,
             app_data_dir,
@@ -2844,17 +2875,21 @@ $$\n\
     }
 
     #[test]
-    fn test_list_dir_filters_and_sorts() {
+    fn test_list_dir_shows_all_and_sorts() {
         let base = std::env::temp_dir().join("tizumark_listdir_test");
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(base.join("zdir")).unwrap();
         fs::write(base.join("b.txt"), "t").unwrap();
         fs::write(base.join("a.md"), "m").unwrap();
-        fs::write(base.join("c.png"), "p").unwrap();       // 非文档扩展应被过滤
-        fs::write(base.join(".hidden.md"), "h").unwrap();  // 点文件应被过滤
+        fs::write(base.join("c.png"), "p").unwrap();       // 非文档扩展也应展示
+        fs::write(base.join(".hidden.md"), "h").unwrap();  // 点文件也应展示
         let res = list_dir(base.to_str().unwrap().to_string()).expect("list_dir 应成功");
         let names: Vec<&str> = res.iter().map(|e| e.name.as_str()).collect();
-        assert_eq!(names, vec!["zdir", "a.md", "b.txt"], "目录排最前，文件按名排序，png/点文件被过滤");
+        assert_eq!(
+            names,
+            vec!["zdir", ".hidden.md", "a.md", "b.txt", "c.png"],
+            "目录排最前，其余按名排序，且不按扩展名/点开头过滤"
+        );
         assert!(res[0].is_dir && !res[1].is_dir);
         let _ = fs::remove_dir_all(&base);
     }

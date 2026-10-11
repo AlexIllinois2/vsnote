@@ -161,6 +161,10 @@ const I18N = {
     fileRename: '重命名',
     fileDelete: '删除',
     fileCopyPath: '复制路径',
+    fileReveal: '在文件管理器中显示',
+    fileRefresh: '刷新',
+    fileRefreshDone: '已刷新文件树',
+    fileRevealFailed: '打开失败',
     newFileNamePrompt: '文件名称（含扩展名，如 note.md）',
     newFolderNamePrompt: '文件夹名称',
     renamePrompt: '新名称',
@@ -461,6 +465,11 @@ const I18N = {
     gitSynced: 'Git 已自动提交并推送',
     gitPulled: '已拉取 Git 远端更新',
     gitSyncFailed: 'Git 同步失败',
+    autoSave: '自动保存',
+    autoSaveOff: '关闭',
+    autoSaveAfter: '停止输入后 {sec} 秒',
+    autoSaveHint: '开启后，停止输入若干秒会自动写入当前文件，不必再按 Ctrl+S。未保存过的草稿不会被弹窗打断，仍需要你手动命名保存。',
+    autoSaved: '已自动保存: {name}',
   },
   en: {
     file: 'File',
@@ -561,6 +570,10 @@ const I18N = {
     fileRename: 'Rename',
     fileDelete: 'Delete',
     fileCopyPath: 'Copy Path',
+    fileReveal: 'Reveal in File Manager',
+    fileRefresh: 'Refresh',
+    fileRefreshDone: 'File tree refreshed',
+    fileRevealFailed: 'Failed to open',
     newFileNamePrompt: 'File name (with extension, e.g. note.md)',
     newFolderNamePrompt: 'Folder name',
     renamePrompt: 'New name',
@@ -851,6 +864,11 @@ const I18N = {
     gitSynced: 'Git auto committed and pushed',
     gitPulled: 'Pulled updates from Git remote',
     gitSyncFailed: 'Git sync failed',
+    autoSave: 'Auto Save',
+    autoSaveOff: 'Off',
+    autoSaveAfter: '{sec}s after typing stops',
+    autoSaveHint: 'Writes the current file automatically once typing pauses for the selected delay — no more Ctrl+S for every edit. Unsaved drafts are never interrupted with a save dialog.',
+    autoSaved: 'Auto-saved: {name}',
   }
 };
 
@@ -871,6 +889,8 @@ class MarkdownEditor {
     this._fileTreeCtx = null;
     this._fileClipboard = null;
     this.debounceTimer = null;
+    this._autoSaveTimer = null; // 自动保存防抖句柄（延迟取自 settings.autoSave，0 表示关闭）
+    this._autoSaving = false;   // 写盘进行中标记，防止上一轮未落就再起一轮
     this._imageURLCache = new Map(); // dataUri → Blob URL（LRU，上限 _imageURLCacheMax，超限 revoke）
     this._imageURLCacheMax = 64;
     this._imageBase64Cache = new Map(); // key: 绝对路径 → value: base64 data URI，省去每次打字跨 IPC 读磁盘
@@ -885,6 +905,13 @@ class MarkdownEditor {
     // 仅靠 dirty 感知不到（内容没变），须在滚动同步时比对高度，变了就强制重测
     // （否则编辑行 ↔ 预览像素错位，2026-08-01 严重 bug 修复）
     this._lastLayoutHeight = null;
+    // 程序化滚动「回声」识别：代码写入 preview.scrollTop / cm.scrollTo 后，浏览器必然
+    // 补发一个 scroll 事件。它不是用户操作，绝不能反向驱动另一侧 —— 这正是「编辑模式
+    // 滚动时编辑区被预览的自动调整拽着上下跑」的根因（详见 _setPreviewScrollTop）。
+    this._previewEchoTop = null;     // 最近一次由代码写入的预览 scrollTop
+    this._editorEchoTop = null;      // 最近一次由代码写入的编辑器 scrollTop
+    this._scrollOwner = null;        // 'editor' | 'preview'：最近一次滚动发生在哪一侧
+    this._scrollOwnerUntil = 0;      // 该侧独占「驱动对方」资格的截止时间戳（ms）
     this.previewWindow = null;       // 大文档窗口模式：{start, end}（0-based 源码行），普通文档为 null
     this._previewVirtual = false;    // 纯预览模式 + 大文档：虚拟滚动（spacer 撑高，可拖到任意位置）
     this._avgLineHeight = null;      // 虚拟滚动平均行高（首次渲染后校准一次，之后恒定）
@@ -1083,8 +1110,8 @@ class MarkdownEditor {
     updateMenuText('btn-view-preview', t('preview'));
     updateMenuText('btn-view-edit', t('edit'));
 
-    // Theme button
-    setText('theme-text', this.isDark ? t('themeDark') : t('themeLight'));
+    // Theme button（纯图标，状态靠 icon + tooltip 表达）
+    this.updateThemeIcon();
 
     // Window controls
     setTitle('btn-minimize', t('minimize'));
@@ -1142,6 +1169,17 @@ class MarkdownEditor {
     setSectionTitle('set-default-view', t('behavior'));
     setRowLabel('set-default-view', t('defaultView'));
     setRowLabel('set-git-autosync', t('gitAutoSync'));
+    setRowLabel('set-autosave', t('autoSave'));
+    const autosaveSel = document.getElementById('set-autosave');
+    if (autosaveSel) {
+      for (let i = 0; i < autosaveSel.options.length; i++) {
+        autosaveSel.options[i].text = i === 0
+          ? t('autoSaveOff')
+          : t('autoSaveAfter', { sec: autosaveSel.options[i].value });
+      }
+    }
+    const autosaveHint = document.querySelector('#setting-autosave-hint .hint-text');
+    if (autosaveHint) autosaveHint.textContent = t('autoSaveHint');
     setRowLabel('set-scroll-sync', t('scrollSync'));
     setRowLabel('set-soft-breaks', t('softBreaks'));
     const softBreaksHint = document.querySelector('#setting-soft-breaks-hint .hint-text');
@@ -1411,6 +1449,9 @@ class MarkdownEditor {
       'file-rename': 'fileRename',
       'file-copy-path': 'fileCopyPath',
       'file-delete': 'fileDelete',
+      'file-reveal': 'fileReveal',
+      'file-refresh': 'fileRefresh',
+      'file-close-folder': 'closeFolder',
     };
     document.querySelectorAll('.context-menu-item[data-action]').forEach(el => {
       const key = ctxActionKeys[el.dataset.action];
@@ -1458,7 +1499,7 @@ class MarkdownEditor {
       previewFontSize: 16,
       lineHeight: 1.7,
       maxWidth: 0,
-      themeMode: 'light',
+      themeMode: 'system',
       colorScheme: 'default',
       fontScheme: 'system-sans',
       defaultView: 'edit',
@@ -1479,6 +1520,7 @@ class MarkdownEditor {
       editorFont: '',
       previewFont: '',
       gitAutoSyncMinutes: 5,
+      autoSave: 0,
     };
   }
 
@@ -1564,6 +1606,7 @@ class MarkdownEditor {
     document.getElementById('set-font-scheme').value = s.fontScheme || 'system-sans';
     document.getElementById('set-default-view').value = s.defaultView;
     document.getElementById('set-git-autosync').value = String(s.gitAutoSyncMinutes ?? 5);
+    document.getElementById('set-autosave').value = String(s.autoSave ?? 0);
     document.getElementById('set-scroll-sync').checked = s.scrollSync;
     document.getElementById('set-code-line-numbers').checked = s.codeLineNumbers;
     document.getElementById('set-code-wrap').checked = s.codeWrap;
@@ -1649,6 +1692,11 @@ class MarkdownEditor {
       this.saveSettings();
       // 间隔变更即时生效（当前打开的是 git 工作区时重建定时器；0 关闭）
       this._startGitTimer();
+    });
+    document.getElementById('set-autosave').addEventListener('change', (e) => {
+      this.settings.autoSave = Number(e.target.value) || 0;
+      this.saveSettings();
+      this._cancelAutoSaveTimer(); // 关闭时立刻作废排队中的自动保存
     });
     document.getElementById('set-scroll-sync').addEventListener('change', (e) => {
       this.settings.scrollSync = e.target.checked;
@@ -1820,6 +1868,13 @@ class MarkdownEditor {
     const visible = !sidebar.classList.contains('hidden');
     const sidebarToggle = document.getElementById('btn-sidebar-toggle');
     if (sidebarToggle) sidebarToggle.classList.toggle('checked', visible);
+    // 左上角侧边栏切换图标：展开时高亮，收缩时恢复常态
+    const appSidebarToggle = document.getElementById('btn-app-sidebar-toggle');
+    if (appSidebarToggle) {
+      appSidebarToggle.classList.toggle('checked', visible);
+      appSidebarToggle.setAttribute('aria-pressed', visible ? 'true' : 'false');
+      if (this.t) appSidebarToggle.title = this.t('toggleSidebar');
+    }
   }
 
   initOutlineResizer() {
@@ -1913,7 +1968,7 @@ class MarkdownEditor {
         // 显式滚动到标题行顶部留 80px 余量：scrollIntoView 在某些 WebView 下不触发实际滚动，
         // 导致「光标到了标题行、可视区仍停在顶部」；scrollTo 直接生效且不受上方 _canScroll 抑制影响。
         const targetTop = this.cm.heightAtLine(line, 'local') - 80;
-        this.cm.scrollTo(0, Math.max(0, targetTop));
+        this._setEditorScrollTop(targetTop);
       }
       // 预览区跳转（仅当该标题已渲染在预览中时）
       const target = this.preview.querySelector(`#${CSS.escape(id)}`);
@@ -1923,7 +1978,7 @@ class MarkdownEditor {
         const previewRect = this.preview.getBoundingClientRect();
         const top = targetRect.top - previewRect.top + this.preview.scrollTop
                   - (previewHeight / 2) + (targetRect.height / 2);
-        this.preview.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+        this._setPreviewScrollTop(top);
       } else if (this.previewWindow) {
         // 大文档窗口模式：目标标题尚未渲染在预览中，以该行为焦点重渲染预览窗口，使其落点
         this._previewScrollDriven = false;
@@ -2310,6 +2365,9 @@ class MarkdownEditor {
     document.getElementById('set-color-scheme').value = defaults.colorScheme;
     document.getElementById('set-font-scheme').value = defaults.fontScheme;
     document.getElementById('set-default-view').value = defaults.defaultView;
+    document.getElementById('set-git-autosync').value = String(defaults.gitAutoSyncMinutes);
+    document.getElementById('set-autosave').value = String(defaults.autoSave);
+    this._cancelAutoSaveTimer();
     document.getElementById('set-scroll-sync').checked = defaults.scrollSync;
     document.getElementById('set-soft-breaks').checked = defaults.softBreaks !== false;
     document.getElementById('set-language').value = defaults.language;
@@ -3121,6 +3179,7 @@ class MarkdownEditor {
       if (!this.activeTab) return; // 无标签页空状态：不写回内容
       this.activeTab.content = this.cm.getValue();
       this.updateTabDisplay();
+      this._scheduleAutoSave();
       // 大文档滑动窗口模式：打字时把窗口焦点同步到光标当前行（0-based），
       // 否则 updatePreview 仍按旧 _previewFocusLine 渲染切片，导致光标处新输入不显示、且预览跳到旧焦点。
       // 滚动驱动的虚拟重渲染走各自的焦点计算，这里只在窗口模式下跟随光标。
@@ -3153,43 +3212,10 @@ class MarkdownEditor {
     this._scrollDebounceTimer = null;
 
     // 编辑器滚动 → 同步预览（demo 的 onScroll 思路）
-    this.cm.on('scroll', () => {
-      if (!this.activeTab) return; // 无标签页空状态：不写回滚动位置
-      const container = document.querySelector('.editor-container');
-      // 编辑器被隐藏（纯预览模式 / 编辑器折叠）时 getScrollInfo().top 恒为 0，
-      // 若写回 scrollPos 会把已保存位置清零，导致切回编辑跳顶部。仅当编辑器可见才更新快照。
-      if (container.classList.contains('preview-mode') || container.classList.contains('editor-collapsed')) return;
-      const info = this.cm.getScrollInfo();
-      this.activeTab.scrollPos = { top: info.top, left: info.left };
-
-      if (!this.settings.scrollSync || !this._canScroll.editor) return;
-      if (container.classList.contains('preview-collapsed') || container.classList.contains('preview-mode')) return;
-
-      this._canScroll.preview = false;
-      this._throttleScroll(() => this._syncEditorToPreview(), 50);
-      this._debounceScroll(() => this._resumeScroll(), 100);
-    });
-
-    // 预览滚动 → 同步编辑器（demo 的 onScroll 思路，方向相反）
-    this.preview.addEventListener('scroll', () => {
-      const container = document.querySelector('.editor-container');
-      // 持续记录预览滚动位置（预览可见时）。edit/preview 切换恢复以及滚动同步都依赖它；
-      // 预览折叠时其 scrollTop 不可靠，跳过以免覆盖有效值。
-      if (this.activeTab && !container.classList.contains('preview-collapsed')) {
-        this.activeTab.previewScrollTop = this.preview.scrollTop;
-      }
-      // 纯预览模式 + 大文档虚拟滚动：驱动预览自身懒加载（拖到任意位置查看全文）
-      if (container.classList.contains('preview-mode') && this._previewVirtual && this.previewWindow) {
-        this._syncPreviewVirtualScroll();
-        return;
-      }
-      if (!this.settings.scrollSync || !this._canScroll.preview) return;
-      if (container.classList.contains('preview-collapsed')) return;
-
-      this._canScroll.editor = false;
-      this._throttleScroll(() => this._syncPreviewToEditor(), 50);
-      this._debounceScroll(() => this._resumeScroll(), 100);
-    });
+    // 处理逻辑抽成方法（而非内联闭包）：滚动同步的回归点都在「谁有资格驱动对方」上，
+    // 抽出来后测试可直接驱动，不必搭真实 CodeMirror（见 test/scroll-sync-echo.test.cjs）。
+    this.cm.on('scroll', () => this._onEditorScroll());
+    this.preview.addEventListener('scroll', () => this._onPreviewScroll());
 
     // ---- 行号点击选行 + 拖动连选 ----
     this._gutterDrag = null;
@@ -3238,6 +3264,70 @@ class MarkdownEditor {
     // WebView2 原生锚定在光标行下方（与浏览器行为一致），不再需要
     // compositionstart 滚动补偿。之前的滚动处理器在视口边缘行上会打断
     // composition（输入不了）+ 触发滚动反馈循环（页面乱滚），已移除。
+  }
+
+  // 编辑器滚动事件：写回滚动快照 + 驱动预览同步。
+  // 只有「用户在滚编辑区」才驱动预览；程序化写入的回声、被预览带动的联动一律跳过。
+  _onEditorScroll() {
+    if (!this.activeTab) return; // 无标签页空状态：不写回滚动位置
+    const container = document.querySelector('.editor-container');
+    // 编辑器被隐藏（纯预览模式 / 编辑器折叠）时 getScrollInfo().top 恒为 0，
+    // 若写回 scrollPos 会把已保存位置清零，导致切回编辑跳顶部。仅当编辑器可见才更新快照。
+    if (container && (container.classList.contains('preview-mode') || container.classList.contains('editor-collapsed'))) return;
+    const info = this.cm.getScrollInfo();
+    this.activeTab.scrollPos = { top: info.top, left: info.left };
+
+    if (!this.settings.scrollSync || !this._canScroll.editor) return;
+    if (container && (container.classList.contains('preview-collapsed') || container.classList.contains('preview-mode'))) return;
+    // 回声：这次编辑器滚动是 _setEditorScrollTop 写入的结果，不是用户操作，不再回写预览
+    if (this._consumeScrollEcho('editor', info.top)) return;
+    // 预览刚滚过 → 这次编辑器滚动是被预览带动的，不再回写预览
+    if (!this._claimScrollOwner('editor')) return;
+
+    this._canScroll.preview = false;
+    this._throttleScroll(() => {
+      this._syncEditorToPreview();
+      // 同步本身可能耗时（长文档上 _computedPosition 可达百毫秒），期间 100ms 的解锁
+      // 定时器已经到期；同步完成后重新上锁并重新计时，确保「写入预览」产生的回声
+      // 一定先于解锁被处理，不会越权把编辑区拽回去。
+      this._canScroll.preview = false;
+      if (this._scrollOwner === 'editor') this._claimScrollOwner('editor'); // 续期所有权
+      this._debounceScroll(() => this._resumeScroll(), 120);
+    }, 50);
+    this._debounceScroll(() => this._resumeScroll(), 100);
+  }
+
+  // 预览滚动事件：写回滚动快照 + 驱动编辑器同步（编辑器侧的镜像逻辑）。
+  _onPreviewScroll() {
+    const container = document.querySelector('.editor-container');
+    // 持续记录预览滚动位置（预览可见时）。edit/preview 切换恢复以及滚动同步都依赖它；
+    // 预览折叠时其 scrollTop 不可靠，跳过以免覆盖有效值。
+    if (this.activeTab && !(container && container.classList.contains('preview-collapsed'))) {
+      this.activeTab.previewScrollTop = this.preview.scrollTop;
+    }
+    // 纯预览模式 + 大文档虚拟滚动：驱动预览自身懒加载（拖到任意位置查看全文）
+    if (container && container.classList.contains('preview-mode') && this._previewVirtual && this.previewWindow) {
+      this._syncPreviewVirtualScroll();
+      return;
+    }
+    if (!this.settings.scrollSync || !this._canScroll.preview) return;
+    if (container && container.classList.contains('preview-collapsed')) return;
+    // 回声：这次预览滚动是代码写入 preview.scrollTop 的结果（编辑器→预览的同步回写、
+    // 重渲染后复位、大文档窗口重渲染贴顶、视图切换恢复…），不是用户操作。
+    // 必须放行它但**不**反向驱动编辑区，否则编辑模式下一滚编辑区就被拽着上下跑。
+    if (this._consumeScrollEcho('preview', this.preview.scrollTop)) return;
+    // 编辑区刚滚过 → 这次预览滚动是被动联动（同步回写 / 异步内容变高后浏览器自动
+    // 调整），不是用户在滚预览，不得反向拽动编辑区
+    if (!this._claimScrollOwner('preview')) return;
+
+    this._canScroll.editor = false;
+    this._throttleScroll(() => {
+      this._syncPreviewToEditor();
+      this._canScroll.editor = false; // 同上：同步完成后重新上锁，避免回声越权
+      if (this._scrollOwner === 'preview') this._claimScrollOwner('preview'); // 续期所有权
+      this._debounceScroll(() => this._resumeScroll(), 120);
+    }, 50);
+    this._debounceScroll(() => this._resumeScroll(), 100);
   }
 
   // 在编辑器的某一行文本中，找出包含第 ch 个字符的链接 URL。
@@ -3340,9 +3430,8 @@ class MarkdownEditor {
   _restoreSwitchScroll(restoreScroll, restorePreviewTop) {
     this._canScroll.editor = false;
     this._canScroll.preview = false;
-    this.cm.scrollTo(restoreScroll.left || 0, restoreScroll.top || 0);
-    const maxScroll = Math.max(this.preview.scrollHeight - this.preview.clientHeight, 0);
-    this.preview.scrollTop = Math.min(restorePreviewTop || 0, maxScroll);
+    this._setEditorScrollTop(restoreScroll.top || 0, restoreScroll.left || 0);
+    this._setPreviewScrollTop(restorePreviewTop || 0);
     setTimeout(() => this._resumeScroll(), 0);
   }
 
@@ -3812,6 +3901,14 @@ class MarkdownEditor {
     document.getElementById('btn-sidebar-toggle').addEventListener('click', () => {
       this.toggleSidebar();
     });
+    const appSidebarToggle = document.getElementById('btn-app-sidebar-toggle');
+    if (appSidebarToggle) {
+      appSidebarToggle.addEventListener('click', () => {
+        this.toggleSidebar();
+      });
+      appSidebarToggle.title = this.t('toggleSidebar');
+      appSidebarToggle.setAttribute('aria-label', this.t('toggleSidebar'));
+    }
     document.getElementById('btn-new').addEventListener('click', () => {
       document.getElementById('file-menu').classList.add('hidden');
       this.newFile();
@@ -4011,14 +4108,17 @@ class MarkdownEditor {
       if (this._fileTreeCtx) {
         const inEditor = e.target.closest && e.target.closest('.CodeMirror');
         const inInput = e.target.closest && e.target.closest('input, textarea, select');
+        // blank 表示右键的是空白处（目标是工作区根目录）：重命名/删除/剪切/复制都没有意义
+        // 且会误伤整个工作区，这些快捷键一律跳过；新建与粘贴仍然有效。
+        const isBlank = !!this._fileTreeCtx.blank;
         if (!inInput && !inEditor) {
           const ctrl = e.ctrlKey || e.metaKey;
-          if (e.key === 'F2') { e.preventDefault(); this.fileTreeRename(); return; }
-          if (e.key === 'Delete') { e.preventDefault(); this.fileTreeDelete(); return; }
+          if (!isBlank && e.key === 'F2') { e.preventDefault(); this.fileTreeRename(); return; }
+          if (!isBlank && e.key === 'Delete') { e.preventDefault(); this.fileTreeDelete(); return; }
           if (ctrl && !e.shiftKey && !e.altKey) {
             const k = e.key.toLowerCase();
-            if (k === 'x') { e.preventDefault(); this.fileTreeCut(); return; }
-            if (k === 'c') { e.preventDefault(); this.fileTreeCopy(); return; }
+            if (k === 'x' && !isBlank) { e.preventDefault(); this.fileTreeCut(); return; }
+            if (k === 'c' && !isBlank) { e.preventDefault(); this.fileTreeCopy(); return; }
             if (k === 'v') { e.preventDefault(); this.fileTreePaste(); return; }
           }
           if (ctrl && e.altKey && !e.shiftKey && e.key.toLowerCase() === 'n') {
@@ -5278,7 +5378,7 @@ class MarkdownEditor {
           const previewRect = this.preview.getBoundingClientRect();
           const top = targetRect.top - previewRect.top + this.preview.scrollTop
                     - (previewHeight / 2) + (targetRect.height / 2);
-          this.preview.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+          this._setPreviewScrollTop(top);
           target.classList.add('footnote-flash');
           setTimeout(() => target.classList.remove('footnote-flash'), 1300);
         }
@@ -6064,6 +6164,33 @@ class MarkdownEditor {
     return true;
   }
 
+  // 图片扩展名 → MIME；非图片返回 ''（未知/文本类型仍按文档打开）
+  _imageMimeOf(path) {
+    const name = String(path).split(/[/\\]/).pop();
+    const dot = name.lastIndexOf('.');
+    if (dot <= 0) return ''; // 无扩展名（LICENSE）不猜类型
+    const mime = {
+      png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+      webp: 'image/webp', bmp: 'image/bmp', ico: 'image/x-icon', avif: 'image/avif',
+      svg: 'image/svg+xml',
+    };
+    return mime[name.slice(dot + 1).toLowerCase()] || '';
+  }
+
+  // 用灯箱显示工作区里的图片。fetch_image_as_base64 同时支持本地绝对路径与
+  // SQLite 工作区内的 node_blob。返回 true 表示已按图片处理（含失败），调用方据此不再当作文本打开。
+  async showLocalImage(path) {
+    const mime = this._imageMimeOf(path);
+    if (!mime) return false;
+    try {
+      const base64 = await invoke('fetch_image_as_base64', { url: path });
+      this.showImageLightbox(`data:${mime};base64,${base64}`);
+    } catch (e) {
+      this.reportError(e.code || 'E_IO', { context: { path }, error: e, params: e.params, detail: e.detail });
+    }
+    return true;
+  }
+
   async openFilePath(filePath) {
     this._largeFileNoticeDismissed = false;
     this._previewFocusLine = 0;
@@ -6076,6 +6203,8 @@ class MarkdownEditor {
         this.saveSession();
         return;
       }
+      // 文件树列出全部类型（含图片附件），图片走灯箱预览：按文本解码二进制只会得到乱码标签页
+      if (await this.showLocalImage(filePath)) return;
       const content = await this.readFileNormalized(filePath);
       const name = filePath.split(/[/\\]/).pop();
       await this.addTab(name, content, filePath);
@@ -6720,9 +6849,45 @@ class MarkdownEditor {
     setDisabled('file-new-file', !ctx);
     setDisabled('file-new-folder', !ctx);
     setDisabled('file-paste', !isDir || !this._fileClipboard);
+    setDisabled('file-reveal', !ctx);
     if (!ctx) {
       ['file-cut', 'file-copy', 'file-rename', 'file-copy-path', 'file-delete'].forEach(a => setDisabled(a, true));
     }
+  }
+
+  // 空白处菜单状态：目标固定为工作区根目录，未打开工作区时全部不可用
+  updateFileTreeBlankMenuState() {
+    const menu = document.getElementById('context-menu-file-tree-blank');
+    if (!menu) return;
+    const hasWs = !!this.workspaceFolder;
+    const setDisabled = (action, disabled) => {
+      menu.querySelectorAll(`[data-action="${action}"]`).forEach(el => {
+        el.classList.toggle('disabled', disabled);
+      });
+    };
+    setDisabled('file-new-file', !hasWs);
+    setDisabled('file-new-folder', !hasWs);
+    setDisabled('file-paste', !hasWs || !this._fileClipboard);
+    setDisabled('file-reveal', !hasWs);
+    setDisabled('file-refresh', !hasWs);
+    setDisabled('file-close-folder', !hasWs);
+  }
+
+  // 在系统文件管理器中显示当前文件树目标（目录则打开，文件则选中）
+  async fileTreeReveal() {
+    const ctx = this._fileTreeCtx;
+    if (!ctx) return;
+    try {
+      await invoke('reveal_in_file_manager', { path: ctx.path });
+    } catch (e) {
+      this.showToast(this.t('fileRevealFailed') + ': ' + e, 'danger');
+    }
+  }
+
+  async fileTreeRefresh() {
+    if (!this.workspaceFolder) return;
+    await this.renderFolderTree();
+    this.setStatus(this.t('fileRefreshDone'));
   }
 
   // 通用输入对话框：返回用户输入的字符串（trim），取消返回 null
@@ -6863,7 +7028,7 @@ class MarkdownEditor {
 
   async fileTreeRename() {
     const ctx = this._fileTreeCtx;
-    if (!ctx) return;
+    if (!ctx || ctx.blank) return; // 空白处目标是工作区根目录，不允许重命名
     const oldName = this.baseName(ctx.path);
     const newName = await this.showPromptDialog({
       title: this.t('fileRename'),
@@ -6897,7 +7062,7 @@ class MarkdownEditor {
 
   async fileTreeDelete() {
     const ctx = this._fileTreeCtx;
-    if (!ctx) return;
+    if (!ctx || ctx.blank) return; // 防御：绝不因空白处上下文误删整个工作区
     const name = this.baseName(ctx.path);
     const msg = ctx.isDir
       ? this.t('confirmDeleteFolder', { name })
@@ -6918,14 +7083,14 @@ class MarkdownEditor {
 
   fileTreeCut() {
     const ctx = this._fileTreeCtx;
-    if (!ctx) return;
+    if (!ctx || ctx.blank) return;
     this._fileClipboard = { op: 'cut', path: ctx.path, isDir: ctx.isDir };
     this.setStatus(this.t('fileCutDone') + ': ' + this.baseName(ctx.path));
   }
 
   fileTreeCopy() {
     const ctx = this._fileTreeCtx;
-    if (!ctx) return;
+    if (!ctx || ctx.blank) return;
     this._fileClipboard = { op: 'copy', path: ctx.path, isDir: ctx.isDir };
     this.setStatus(this.t('fileCopyDone') + ': ' + this.baseName(ctx.path));
   }
@@ -7149,6 +7314,46 @@ class MarkdownEditor {
       this._noteFsChanged();
     } catch (error) {
       this.setStatus(`${this.t('saveFailed')}: ${error}`);
+    }
+  }
+
+  _cancelAutoSaveTimer() {
+    if (this._autoSaveTimer) { clearTimeout(this._autoSaveTimer); this._autoSaveTimer = null; }
+  }
+
+  // 自动保存：停止输入 settings.autoSave 秒后落盘，0 = 关闭。只保存已有路径的标签——
+  // 未命名草稿在此弹保存框会打断写作，命名仍交给用户手动 Ctrl+S / 另存为。
+  _scheduleAutoSave() {
+    this._cancelAutoSaveTimer();
+    const seconds = Number(this.settings.autoSave) || 0;
+    const tab = this.activeTab;
+    if (seconds <= 0 || !tab || !tab.filePath) return;
+    // 绑定到本次编辑的 tab：延时期间切换标签也要把刚才那份改动保存下来
+    this._autoSaveTimer = setTimeout(() => {
+      this._autoSaveTimer = null;
+      this._autoSaveTab(tab);
+    }, seconds * 1000);
+  }
+
+  async _autoSaveTab(tab) {
+    // 标签可能已被关闭（用户选择丢弃改动）、外部变更待用户裁决、上一轮还没写完：都不抢
+    if (!tab || !this.tabs.includes(tab) || !tab.filePath) return;
+    if ((Number(this.settings.autoSave) || 0) <= 0) return;
+    if (tab.pendingExternalChange || this._autoSaving || !tab.isModified) return;
+    const content = tab.content;
+    this._autoSaving = true;
+    try {
+      await invoke('write_file', { path: tab.filePath, content });
+      tab.savedContent = content;
+      this.updateTabDisplay();
+      await this.refreshFileMeta(tab);
+      this.saveSession();
+      this._noteFsChanged();
+      if (tab === this.activeTab) this.setStatus(this.t('autoSaved', { name: tab.name }));
+    } catch (error) {
+      this.setStatus(`${this.t('saveFailed')}: ${error}`);
+    } finally {
+      this._autoSaving = false;
     }
   }
 
@@ -7896,6 +8101,58 @@ input[type="checkbox"]:checked::after { display: none !important; }
     this._canScroll.preview = true;
   }
 
+  // 程序化写入「预览滚动位置」的唯一入口。
+  //
+  // 为什么要集中：写入后浏览器必然补发一个 scroll 事件（回声）。这个回声与用户真实
+  // 滚动预览在事件层面完全无法区分，若不标记，预览的 scroll 处理器就会把它当成
+  // 「用户在滚预览」而反向把编辑区滚到映射位置 —— 表现就是编辑模式下一滚编辑区，
+  // 编辑区就被预览的自动调整（同步回写 / 重渲染复位 / 窗口重渲染贴顶）拽着上下跑。
+  // 双标志锁 _canScroll 理论上也能挡住回声，但它的解锁是「最后一次滚动 +100ms」的
+  // 定时器：长文档上 _computedPosition() 一次可达上百毫秒，定时器会在回声到达之前
+  // 先解锁，回声随即越权驱动编辑区。故改用「值标记」方式，与耗时无关。
+  _setPreviewScrollTop(top) {
+    const max = Math.max(this.preview.scrollHeight - this.preview.clientHeight, 0);
+    let v = (typeof top === 'number' && isFinite(top)) ? top : 0;
+    v = Math.max(0, Math.min(v, max));
+    this._previewEchoTop = v;
+    this.preview.scrollTop = v;
+    return v;
+  }
+
+  // 程序化写入「编辑器滚动位置」的唯一入口（同上，防止编辑器回声反向拽动预览）
+  _setEditorScrollTop(top, left) {
+    let v = (typeof top === 'number' && isFinite(top)) ? top : 0;
+    v = Math.max(0, v);
+    this._editorEchoTop = v;
+    this.cm.scrollTo((typeof left === 'number' && isFinite(left)) ? left : 0, v);
+    return v;
+  }
+
+  // 滚动方向所有权：最近滚动的那一侧在 200ms 内独占「驱动对方」的资格。
+  //
+  // 除回声外还有一类「预览自己动」：图片/公式/mermaid 异步加载完成后预览变高，
+  // 浏览器会自动调整 preview.scrollTop，同样派发 scroll 事件。它不是用户操作，
+  // 让它反向驱动编辑区，就是在编辑模式下把编辑区拽上拽下的元凶之一。
+  // 返回 false 表示对方刚滚过、本次滚动属于被动联动，调用方应跳过同步。
+  _claimScrollOwner(side) {
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    if (this._scrollOwner && this._scrollOwner !== side && now < this._scrollOwnerUntil) return false;
+    this._scrollOwner = side;
+    this._scrollOwnerUntil = now + 200;
+    return true;
+  }
+
+  // 判定本次滚动是不是「自己刚写进去的位置」被浏览器补发的回声。
+  // 命中则消费掉标记并返回 true（调用方应跳过滚动同步）。
+  _consumeScrollEcho(side, currentTop) {
+    const key = side === 'preview' ? '_previewEchoTop' : '_editorEchoTop';
+    const marked = this[key];
+    if (marked == null) return false;
+    if (Math.abs(currentTop - marked) < 2) { this[key] = null; return true; }
+    this[key] = null; // 位置已变，标记作废（真实滚动）
+    return false;
+  }
+
   // 编辑器 → 预览同步（逐行密集插值）
   _syncEditorToPreview(editorTop) {
     if (this.previewWindow) { this._syncEditorToPreviewWindow(); return; }
@@ -7909,9 +8166,9 @@ input[type="checkbox"]:checked::after { display: none !important; }
     const cmInfo = this.cm.getScrollInfo();
     const top = (editorTop != null) ? editorTop : cmInfo.top;
 
-    if (top <= 0.5) { this.preview.scrollTop = 0; return; }
+    if (top <= 0.5) { this._setPreviewScrollTop(0); return; }
     if (top + clientHeight >= cmInfo.height - 0.5) {
-      this.preview.scrollTop = Math.max(0, scrollHeight - clientHeight);
+      this._setPreviewScrollTop(scrollHeight - clientHeight);
       return;
     }
 
@@ -7922,9 +8179,9 @@ input[type="checkbox"]:checked::after { display: none !important; }
       else hi = mid;
     }
     let idx = lo - 1;
-    if (idx < 0) { this.preview.scrollTop = 0; return; }
+    if (idx < 0) { this._setPreviewScrollTop(0); return; }
     if (idx >= editorList.length - 1) {
-      this.preview.scrollTop = Math.max(0, scrollHeight - clientHeight);
+      this._setPreviewScrollTop(scrollHeight - clientHeight);
       return;
     }
 
@@ -7934,12 +8191,12 @@ input[type="checkbox"]:checked::after { display: none !important; }
     const previewEnd = previewList[idx + 1];
 
     if (editorEnd <= editorStart || previewEnd < 0 || previewStart < 0) {
-      this.preview.scrollTop = previewStart;
+      this._setPreviewScrollTop(previewStart);
       return;
     }
 
     const targetScrollTop = previewStart + (top - editorStart) / (editorEnd - editorStart) * (previewEnd - previewStart);
-    this.preview.scrollTop = Math.max(0, Math.min(targetScrollTop, scrollHeight - clientHeight));
+    this._setPreviewScrollTop(targetScrollTop);
   }
 
   // 预览 → 编辑器同步（逐行密集插值）
@@ -7957,9 +8214,9 @@ input[type="checkbox"]:checked::after { display: none !important; }
     const cmInfo = this.cm.getScrollInfo();
     const pvTop = (previewTop != null) ? previewTop : this.preview.scrollTop;
 
-    if (pvTop <= 0.5) { this.cm.scrollTo(0, 0); return; }
+    if (pvTop <= 0.5) { this._setEditorScrollTop(0); return; }
     if (pvTop + clientHeight >= scrollHeight - 0.5) {
-      this.cm.scrollTo(0, Math.max(0, cmInfo.height - cmInfo.clientHeight));
+      this._setEditorScrollTop(cmInfo.height - cmInfo.clientHeight);
       return;
     }
 
@@ -7970,9 +8227,9 @@ input[type="checkbox"]:checked::after { display: none !important; }
       else hi = mid;
     }
     let idx = lo - 1;
-    if (idx < 0) { this.cm.scrollTo(0, 0); return; }
+    if (idx < 0) { this._setEditorScrollTop(0); return; }
     if (idx >= previewList.length - 1) {
-      this.cm.scrollTo(0, Math.max(0, cmInfo.height - cmInfo.clientHeight));
+      this._setEditorScrollTop(cmInfo.height - cmInfo.clientHeight);
       return;
     }
 
@@ -7982,12 +8239,12 @@ input[type="checkbox"]:checked::after { display: none !important; }
     const editorEnd = editorList[idx + 1];
 
     if (previewEnd <= previewStart || editorEnd < 0 || editorStart < 0) {
-      this.cm.scrollTo(0, editorStart);
+      this._setEditorScrollTop(editorStart);
       return;
     }
 
     const targetEditorTop = editorStart + (pvTop - previewStart) / (previewEnd - previewStart) * (editorEnd - editorStart);
-    this.cm.scrollTo(0, targetEditorTop);
+    this._setEditorScrollTop(targetEditorTop);
   }
 
   // 滑动窗口模式：编辑器滚动 → 预览
@@ -8017,7 +8274,7 @@ input[type="checkbox"]:checked::after { display: none !important; }
     }
     const targetTop = this.cm.heightAtLine(bestLine, 'local');
     if (this.activeTab) this.activeTab.scrollPos = { top: targetTop, left: 0 };
-    this.cm.scrollTo(0, targetTop);
+    this._setEditorScrollTop(targetTop);
   }
 
   // 按 markdown 块级元素边界分割源码，与 pulldown-cmark 渲染输出对齐
@@ -8176,8 +8433,7 @@ input[type="checkbox"]:checked::after { display: none !important; }
     for (const [ln, top] of this._windowLineTops) {
       if (ln <= target && ln > bestLine) { bestLine = ln; bestTop = top; }
     }
-    const maxScroll = Math.max(this.preview.scrollHeight - this.preview.clientHeight, 0);
-    this.preview.scrollTop = Math.max(0, Math.min(bestTop - 24, maxScroll));
+    this._setPreviewScrollTop(bestTop - 24);
   }
 
   // 纯预览模式大文档：把窗口片段渲染到「撑满全文高度的占位 + 绝对定位块」中，
@@ -8389,9 +8645,9 @@ input[type="checkbox"]:checked::after { display: none !important; }
         const top = cmInfo.top;
 
         if (top <= 0.5) {
-          this.preview.scrollTop = 0;
+          this._setPreviewScrollTop(0);
         } else if (top + cmInfo.clientHeight >= cmInfo.height - 0.5) {
-          this.preview.scrollTop = Math.max(0, this.preview.scrollHeight - this.preview.clientHeight);
+          this._setPreviewScrollTop(this.preview.scrollHeight - this.preview.clientHeight);
         } else {
           let idx = -1;
           for (let i = 0; i < this._editorElementList.length; i++) {
@@ -8408,13 +8664,14 @@ input[type="checkbox"]:checked::after { display: none !important; }
             const previewEnd = this._previewElementList[idx + 1];
             if (editorEnd > editorStart) {
               const ratio = (top - editorStart) / (editorEnd - editorStart);
-              this.preview.scrollTop = previewStart + ratio * (previewEnd - previewStart);
+              this._setPreviewScrollTop(previewStart + ratio * (previewEnd - previewStart));
             }
           }
         }
       } else {
+        // 未开启滚动同步：只做越界收敛，同样要标记（否则这次收敛会把编辑区拽到顶部）
         const maxScroll = Math.max(this.preview.scrollHeight - this.preview.clientHeight, 0);
-        if (this.preview.scrollTop > maxScroll) this.preview.scrollTop = maxScroll;
+        if (this.preview.scrollTop > maxScroll) this._setPreviewScrollTop(this.preview.scrollTop);
       }
       requestAnimationFrame(() => {
         if (gen === this._renderGeneration) this._resumeScroll();
@@ -8835,40 +9092,25 @@ input[type="checkbox"]:checked::after { display: none !important; }
   }
 
   async toggleTheme() {
-    if (this.settings.themeMode !== 'light' && this.settings.themeMode !== 'dark') {
-      this.settings.themeMode = this.isDark ? 'light' : 'dark';
-      document.getElementById('set-theme-mode').value = this.settings.themeMode;
-    }
-    this.isDark = !this.isDark;
-    this.settings.themeMode = this.isDark ? 'dark' : 'light';
+    // 只切换观感并固定为明/暗：跟随系统时从当前实际观感取反（isDark 已由 applyThemeMode 算出）
+    this.settings.themeMode = this.isDark ? 'light' : 'dark';
     document.getElementById('set-theme-mode').value = this.settings.themeMode;
     this.saveSettings();
-    document.documentElement.setAttribute('data-theme', this.isDark ? 'dark' : 'light');
-    document.documentElement.setAttribute('data-color-scheme', this.settings.colorScheme || 'default');
-    this.cm.setOption('theme', this.isDark ? 'material-darker' : 'default');
-    this.updateThemeIcon();
-
-    const highlightTheme = document.getElementById('highlight-theme');
-    if (highlightTheme) {
-      highlightTheme.href = this.isDark
-        ? 'lib/highlight.js/github-dark.min.css'
-        : 'lib/highlight.js/github.min.css';
-    }
-
-    await this.rerenderMermaid();
+    await this.applyThemeMode();
     this.setStatus(this.t('themeSwitched', { theme: this.isDark ? this.t('themeDark') : this.t('themeLight') }));
   }
 
   updateThemeIcon() {
     const svg = document.getElementById('theme-icon');
-    const text = document.getElementById('theme-text');
     if (!svg) return;
+    const btn = document.getElementById('btn-theme');
+    // 纯图标按钮：用 icon 形状 + tooltip 表达「当前态 / 点击后切到哪」
     if (this.isDark) {
       svg.innerHTML = '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>';
-      if (text) text.textContent = this.t('themeDark');
+      if (btn) btn.title = this.t('themeLight');
     } else {
       svg.innerHTML = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>';
-      if (text) text.textContent = this.t('themeLight');
+      if (btn) btn.title = this.t('themeDark');
     }
   }
 
@@ -8977,14 +9219,12 @@ input[type="checkbox"]:checked::after { display: none !important; }
             this._computedPosition(true);
             const list = this._previewElementList;
             if (list && anchor - 1 < list.length) {
-              const pMax = Math.max(this.preview.scrollHeight - this.preview.clientHeight, 0);
-              this.preview.scrollTop = Math.min(Math.max(0, list[anchor - 1] || 0), pMax);
+              this._setPreviewScrollTop(list[anchor - 1] || 0);
               restored = true;
             }
           }
           if (!restored) {
-            const pMax = Math.max(this.preview.scrollHeight - this.preview.clientHeight, 0);
-            this.preview.scrollTop = Math.min(rTab.previewScrollTop || 0, pMax);
+            this._setPreviewScrollTop(rTab.previewScrollTop || 0);
           }
         } else {
           // 切回编辑（分屏）：编辑器已 refresh，用锚点行在编辑器里的像素位置定位
@@ -8992,12 +9232,12 @@ input[type="checkbox"]:checked::after { display: none !important; }
           if (anchor != null && this.cm) {
             try {
               const targetTop = this.cm.heightAtLine(Math.max(0, anchor - 1), 'local');
-              if (typeof targetTop === 'number') { this.cm.scrollTo(0, targetTop); restored = true; }
+              if (typeof targetTop === 'number') { this._setEditorScrollTop(targetTop); restored = true; }
             } catch (_) {}
           }
           if (!restored) {
             const sp = rTab.scrollPos || { top: 0, left: 0 };
-            this.cm.scrollTo(sp.left || 0, sp.top || 0);
+            this._setEditorScrollTop(sp.top || 0, sp.left || 0);
           }
         }
       }
@@ -9046,7 +9286,7 @@ input[type="checkbox"]:checked::after { display: none !important; }
       if (restored) return;
       restored = true;
       this.cm.refresh();
-      this.preview.scrollTop = previewScrollTop;
+      this._setPreviewScrollTop(previewScrollTop);
       this.updateSideButtons();
       requestAnimationFrame(() => {
         this._resumeScroll();
@@ -9678,20 +9918,29 @@ input[type="checkbox"]:checked::after { display: none !important; }
 
     // 文件树右键菜单：事件委托到 #folder-tree，动态渲染的节点也能生效。
     // stopPropagation 阻止冒泡到 document 级 contextmenu 监听，否则会 hideAllContextMenus 把刚弹出的菜单关掉。
+    // 右键节点 → 节点菜单（剪切/复制/重命名/删除…）；右键空白处 → 空白菜单（作用于工作区根目录，同 VSCode）。
     const folderTree = document.getElementById('folder-tree');
     if (folderTree) {
       folderTree.addEventListener('contextmenu', (e) => {
-        const treeNode = e.target.closest('.tree-node');
-        if (!treeNode) return; // 右键空白处暂不弹菜单
-        const path = treeNode.dataset.path;
-        if (!path) return;
         e.preventDefault();
         e.stopPropagation();
-        const isDir = treeNode.classList.contains('tree-folder');
-        this._fileTreeCtx = { path, isDir, nodeEl: treeNode };
         this.hideAllContextMenus();
-        this.showContextMenu('context-menu-file-tree', e.clientX, e.clientY);
-        this.updateFileTreeMenuState();
+        // 未打开工作区时没有任何可操作目标，只吞掉系统菜单
+        if (!this.workspaceFolder) return;
+        const treeNode = e.target.closest('.tree-node');
+        const path = treeNode ? treeNode.dataset.path : '';
+        if (treeNode && path) {
+          const isDir = treeNode.classList.contains('tree-folder');
+          this._fileTreeCtx = { path, isDir, nodeEl: treeNode };
+          this.showContextMenu('context-menu-file-tree', e.clientX, e.clientY);
+          this.updateFileTreeMenuState();
+        } else {
+          // 空白处：目标是工作区根目录。blank 标记让 F2/Delete/Ctrl+X/C 等快捷键跳过，
+          // 避免误把整个工作区重命名或删掉。
+          this._fileTreeCtx = { path: this.workspaceFolder, isDir: true, nodeEl: null, blank: true };
+          this.showContextMenu('context-menu-file-tree-blank', e.clientX, e.clientY);
+          this.updateFileTreeBlankMenuState();
+        }
       });
     }
 
@@ -9887,6 +10136,9 @@ input[type="checkbox"]:checked::after { display: none !important; }
       case 'file-rename': this.fileTreeRename(); break;
       case 'file-copy-path': this.fileTreeCopyPath(); break;
       case 'file-delete': this.fileTreeDelete(); break;
+      case 'file-reveal': this.fileTreeReveal(); break;
+      case 'file-refresh': this.fileTreeRefresh(); break;
+      case 'file-close-folder': this.closeFolder(); break;
     }
   }
 

@@ -22,7 +22,7 @@ test('settings: defaultSettings 返回完整默认配置', async () => {
     assert.strictEqual(d.previewFontSize, 16);
     assert.strictEqual(d.lineHeight, 1.7);
     assert.strictEqual(d.maxWidth, 0);
-    assert.strictEqual(d.themeMode, 'light');
+    assert.strictEqual(d.themeMode, 'system', '默认跟随系统深浅色');
     assert.strictEqual(d.colorScheme, 'default');
     assert.strictEqual(d.fontScheme, 'system-sans');
     assert.strictEqual(d.defaultView, 'edit');
@@ -42,6 +42,7 @@ test('settings: defaultSettings 返回完整默认配置', async () => {
     assert.strictEqual(d.customFonts.length, 0, 'customFonts 应为空');
     assert.strictEqual(d.editorFont, '');
     assert.strictEqual(d.previewFont, '');
+    assert.strictEqual(d.autoSave, 0, '自动保存默认关闭');
   } finally { cleanup(w); }
 });
 
@@ -136,6 +137,23 @@ test('settings: applyThemeMode system 跟随 matchMedia(返回 light)', async ()
     ed.settings.themeMode = 'system';
     await ed.applyThemeMode();
     assert.strictEqual(w.document.documentElement.getAttribute('data-theme'), 'light', 'matchMedia 默认 false 应为 light');
+  } finally { cleanup(w); }
+});
+
+test('settings: toggleTheme 按当前观感取反并把跟随系统固定为明/暗', async () => {
+  const { w, ed } = await makeEditor();
+  try {
+    ed.setStatus = () => {};
+    ed.settings.themeMode = 'system';
+    // harness 的 matchMedia 恒返回 false ⇒ 当前观感为 light，点击后应切到 dark
+    await ed.toggleTheme();
+    assert.strictEqual(ed.settings.themeMode, 'dark', '从观感 light 应切到 dark');
+    assert.strictEqual(w.document.documentElement.getAttribute('data-theme'), 'dark');
+    assert.strictEqual(ed.cm.getOption('theme'), 'material-darker');
+    await ed.toggleTheme();
+    assert.strictEqual(ed.settings.themeMode, 'light', '再点一次应切回 light');
+    assert.strictEqual(w.document.documentElement.getAttribute('data-theme'), 'light');
+    assert.strictEqual(ed.cm.getOption('theme'), 'default');
   } finally { cleanup(w); }
 });
 

@@ -2,6 +2,16 @@
 /* 配色方案由 data-color-scheme 控制：default | forest | nord | dusk | sunset */
 /* 字体方案由 data-font-scheme 控制：system-sans | reading-sans | classic-serif */
 /* data-theme="light|dark" 控制明暗 */
+/* 显式声明 color-scheme，让原生控件（滚动条/表单/默认画布）跟随应用内主题，
+   而不是跟随操作系统 —— 「跟随系统」或手动 pinned 明亮/暗色时才不会打架。 */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
 
 /* --- 全局语义色（所有主题共用） --- */
 :root {
@@ -459,13 +469,38 @@ body {
   margin-left: auto;
 }
 
-.app-icon {
-  width: 24px;
-  height: 24px;
+/* 左上角侧边栏切换按钮（原 app logo 位置） */
+.app-sidebar-toggle {
+  width: 26px;
+  height: 26px;
   margin-right: 6px;
+  padding: 0;
   flex-shrink: 0;
-  -webkit-app-region: no-drag;
   align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.app-sidebar-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.app-sidebar-toggle:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.app-sidebar-toggle.checked {
+  color: var(--accent-color);
 }
 
 .toolbar-center {
@@ -594,6 +629,12 @@ body {
   color: var(--accent-text) !important;
 }
 
+/* 主题切换：纯图标，收窄为接近正方形 */
+#btn-theme {
+  padding: 0 5px;
+  justify-content: center;
+}
+
 .view-mode-tabs {
   display: flex;
   background-color: var(--bg-primary);
@@ -607,13 +648,14 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 14px;
-  border: none;
+  padding: 1px 13px;
+  /* 透明边框占位：激活态只改 border-color，避免布局抖动 */
+  border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 12px;
-  transition: background-color, color, border-color, opacity, transform, box-shadow 0.2s ease;
+  transition: color, border-color 0.2s ease;
   border-radius: 16px;
   -webkit-app-region: no-drag;
 }
@@ -627,10 +669,17 @@ body {
   color: var(--text-primary);
 }
 
+/* 激活态：前景高亮（icon + 文字 + 边框），不使用背景填充 */
 .view-mode-tab.active {
-  background-color: var(--accent-color);
-  color: var(--accent-text);
-  box-shadow: 0 1px 4px var(--accent-muted);
+  background-color: transparent;
+  color: var(--accent-color);
+  border-color: var(--accent-color);
+  box-shadow: none;
+}
+
+.view-mode-tab.active:hover {
+  color: var(--accent-color);
+  border-color: var(--accent-color);
 }
 
 .view-mode-tab + .view-mode-tab {
@@ -687,10 +736,18 @@ body {
   transition: background-color, color, border-color, opacity, transform, box-shadow 0.15s ease;
 }
 
-.dropdown-item .icon {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
+/* 菜单栏下拉（VSCode 风格）：菜单项不带图标，左侧留出统一的复选标记槽位，
+   保证所有条目的文字左对齐、快捷键右对齐 */
+.menu-list .dropdown-item {
+  position: relative;
+  padding-left: 28px;
+}
+
+.menu-list .dropdown-item > .dropdown-check {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .context-menu-item {
@@ -706,12 +763,6 @@ body {
 }
 
 .context-menu-item .icon {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-}
-
-.dropdown-item .icon {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
@@ -1539,6 +1590,18 @@ body.is-resizing .side-btn {
   /* 亮色正文对齐 VSCode Light+（#333 on 白，≈12.6:1）：CM 默认主题纯黑 on 白
      对比度 21:1 过高。限定 data-theme="light" 作用域，避免干扰暗色主题覆盖 */
   color: #333;
+}
+
+/* 行号栏背景与编辑区正文背景保持一致：
+   CodeMirror 默认主题给 .CodeMirror-gutters 上了 #f7f7f7，与白色正文区有明显色差；
+   置为 transparent 后直接继承 .CodeMirror 的背景（亮色 #fff / 暗色 --bg-primary）。 */
+#editor-wrapper .CodeMirror-gutters {
+  background-color: transparent;
+  border-right: none;
+}
+
+#editor-wrapper .CodeMirror-activeline-gutter {
+  background-color: transparent;
 }
 
 [data-theme="dark"] .cm-s-material-darker .CodeMirror-gutters {

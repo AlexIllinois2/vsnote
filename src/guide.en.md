@@ -328,7 +328,7 @@ All options are available in `File → Settings`:
 | Setting | Options | Default | Description |
 |---------|---------|---------|-------------|
 | Language | 中文 / English | 中文 | Switch the entire UI language |
-| Theme Mode | Light / Dark / Follow System | Light | Light/dark background, or match OS |
+| Theme Mode | Light / Dark / Follow System | Follow System | Light/dark background, or match OS |
 | Color Scheme | Base / Sunset / Forest / Nord / Dusk | Base | Overall UI color style |
 | Font Scheme | Minimalist (sans-serif) / Print Style (serif) | Print Style | Preview body font family style |
 
@@ -358,6 +358,7 @@ All options are available in `File → Settings`:
 | Setting | Options | Description |
 |---------|---------|-------------|
 | Default View | Preview / Edit | Startup view mode |
+| Auto Save | Off / 1–10s after typing stops | Off. Only files that already have a path are written automatically; untitled drafts never trigger a save dialog — use Ctrl+S |
 | Scroll Sync | On / Off | Sync preview scroll with editor |
 | Soft Line Break (Enter = newline) | On / Off | When on, a single Enter creates a line break; when off, CommonMark standard applies (Enter = space) |
 | Image Storage Mode | Copy to assets / Base64 Embed | See Image Management |

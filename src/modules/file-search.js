@@ -130,6 +130,10 @@ function fsCloseDialog() {
   if (window.editor && window.editor.cm) window.editor.cm.focus();
 }
 
+// 快速打开要遍历整棵目录树，而侧边文件树是按需展开的。list_dir 现在会列出隐藏目录，
+// 若跟着进 .git / node_modules 递归，每次 IPC 叠加几千个条目会让 Ctrl+P 卡住数秒。
+const FS_SKIP_DIRS = ['.git', '.svn', '.hg', 'node_modules', 'target', 'dist', 'build', '.idea', '.vscode'];
+
 async function fsScanDir(dirPath, result, rootDir) {
   if (!__fs_invoke) return;
   try {
@@ -146,7 +150,7 @@ async function fsScanDir(dirPath, result, rootDir) {
       }
     }
     for (const entry of entries) {
-      if (entry.is_dir) await fsScanDir(entry.path, result, rootDir);
+      if (entry.is_dir && !FS_SKIP_DIRS.includes(entry.name)) await fsScanDir(entry.path, result, rootDir);
     }
   } catch (e) {}
 }

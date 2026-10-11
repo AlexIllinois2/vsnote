@@ -104,12 +104,12 @@ const harnessFn = function () {
     results.push(['C1: 越界 previewScrollTop 被钳制到 maxScroll', ed.preview.scrollTop === maxScroll]);
 
     // --- 场景 D: 编辑器 scroll 处理器守卫（防预览模式滚动清零 scrollPos）---
-    // 处理器是 initEditor 内的闭包，无法被 stub 触发；此处从源码抽取真实闭包运行，
     // 确保 preview/折叠隐藏时绝不写回 scrollPos（真实 bug 路径：预览滚动→_syncPreviewToEditor→
     // 对隐藏编辑器 cm.scrollTo→触发编辑器 scroll→若没守卫则把 scrollPos 清零→切回编辑跳顶部）。
-    const handlerMatch = window.__APPJS_SOURCE.match(/this\.cm\.on\('scroll', \(\) => \{([\s\S]*?)\n    \}\);/);
-    results.push(['D0: 成功抽取真实编辑器 scroll 处理器', !!handlerMatch]);
-    const scrollHandler = handlerMatch ? new Function(handlerMatch[1]) : null;
+    // 处理器原先是 initEditor 内的内联闭包（只能用正则从源码文本里抠出来跑，源码一改就失效）；
+    // 现已抽成 MarkdownEditor.prototype._onEditorScroll，可直接调用。
+    const scrollHandler = (typeof MarkdownEditor !== 'undefined' && MarkdownEditor.prototype._onEditorScroll) || null;
+    results.push(['D0: 成功抽取真实编辑器 scroll 处理器', typeof scrollHandler === 'function']);
     const containerEl = document.querySelector('.editor-container');
 
     if (scrollHandler) {

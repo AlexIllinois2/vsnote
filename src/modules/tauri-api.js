@@ -21,9 +21,9 @@
     'list_dir', 'ensure_dir', 'app_data_dir', 'read_bundled_file',
     'read_bundled_image_as_base64', 'fetch_image_as_base64', 'save_image_to_assets',
     'watch_folder', 'stop_watch', 'search_in_files', 'generate_toc',
-    'get_cli_args', 'quit_app', 'open_devtools', 'set_window_behavior',
+    'get_cli_args', 'quit_app', 'open_devtools',
     // dev2 文件树右键操作：重命名 / 删除 / 复制 / 移动（lib.rs 已注册对应 handler）
-    'rename_path', 'remove_path', 'copy_path', 'move_path',
+    'rename_path', 'remove_path', 'copy_path', 'move_path', 'reveal_in_file_manager',
     // SQLite 工作区：打开/关闭 db、文件夹与 db 互导
     'db_open', 'db_close', 'export_to_db', 'export_to_folder',
     // Git 自动同步：仓库检测 / 保存后 commit+push / 定时 pull

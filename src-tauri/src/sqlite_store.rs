@@ -628,13 +628,8 @@ pub fn list_dir(root: &str, path: &str) -> Result<Vec<crate::DirEntryInfo>, Stri
             Some(n) => n,
             None => continue,
         };
-        if name.starts_with('.') {
-            continue;
-        }
+        // 与文件系统 list_dir 对齐：不隐藏点开头的节点，也不按扩展名过滤
         let is_dir = ntype == "folder";
-        if !is_dir && !is_text_ext(&name) {
-            continue;
-        }
         entries.push((name, is_dir));
     }
     // 文件夹在前，名称不区分大小写升序（与 list_dir 的文件系统排序一致）

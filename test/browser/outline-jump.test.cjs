@@ -84,7 +84,7 @@ const TauriMock = `
           case 'file_meta': return { size:0, isDir:false, modified:0 };
           case 'write_file': case 'write_binary_file': case 'ensure_dir':
           case 'save_image_to_assets': case 'watch_folder': case 'stop_watch':
-          case 'set_window_behavior': case 'generate_toc': case 'get_cli_args':
+          case 'generate_toc': case 'get_cli_args':
           case 'quit_app': case 'open_devtools': return null;
           case 'search_in_files': return [];
           case 'get_version': return '0.0.0-test';

@@ -24,10 +24,13 @@
     'get_cli_args', 'quit_app', 'open_devtools',
     // dev2 文件树右键操作：重命名 / 删除 / 复制 / 移动（lib.rs 已注册对应 handler）
     'rename_path', 'remove_path', 'copy_path', 'move_path', 'reveal_in_file_manager',
-    // SQLite 工作区：打开/关闭 db、文件夹与 db 互导
-    'db_open', 'db_close', 'export_to_db', 'export_to_folder',
-    // Git 自动同步：仓库检测 / 保存后 commit+push / 定时 pull
+    // SQLite 工作区：打开/关闭 db、记住/清除密码（缓存派生密钥）、文件夹与 db 互导
+    'db_open', 'db_close', 'db_remember_password', 'db_forget_password',
+    'export_to_db', 'export_to_folder',
+    // Git 自动同步：仓库检测 / 状态快照 / commit+pull(merge)+push / 只拉取 /
+    // 冲突自动解决（union/ours/theirs）/ 放弃本次合并
     'git_check', 'git_auto_sync', 'git_auto_pull',
+    'git_status', 'git_resolve_conflicts', 'git_abort_merge',
   ];
 
   // 延迟求值：调用时才读取 invoke（根治白屏单点）

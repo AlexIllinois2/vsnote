@@ -49,7 +49,6 @@ In Edit Mode:
 
 | Action | Method |
 |--------|--------|
-| Collapse editor | Click left <kbd>◄</kbd> button |
 | Collapse preview | Click right <kbd>►</kbd> button |
 | Resize panes | Drag the middle divider |
 
@@ -107,6 +106,22 @@ When an open file is modified by another program outside TizuMark, a banner appe
 ### Large Document Protection
 
 When a document exceeds ~5000 lines or 4MB, the preview automatically switches to sliding-window mode, rendering only the current reading region (a ~1200-line window) instead of the whole document — so files of tens of thousands of lines still open smoothly. A notice is shown at the top of the editor.
+
+### Git Auto Sync
+
+If the folder workspace you opened is itself a Git repository (contains `.git`), TizuMark can keep it synced automatically:
+
+- **Auto commit**: triggered 3 seconds after a save or a file-tree create/rename/delete, plus on the interval set in Settings (5 minutes by default) — so edits made by other programs are picked up too.
+- **Pull before push**: every sync runs in a fixed order — commit local changes → pull and merge remote → push — so the remote never rejects it as non-fast-forward.
+- **Auto merge**: pulling uses `git merge` (not rebase, so already-pushed history is never rewritten). When the two sides touched different places, git merges them automatically; only edits to the same spot count as a conflict.
+- **Conflict handling**: git merges everything it can; only edits to the same lines count as a conflict. The *Git Conflict Handling* setting decides what happens then —
+  - *Mark conflicts, I will edit* (default): the **filename stays the same** and the file becomes a standard git conflict file, with `<<<<<<< HEAD` / `=======` / `>>>>>>> remote` markers around the conflicting part. Delete the markers, keep what you want, save — the next sync commits the merge and pushes automatically;
+  - *Keep both*: `git merge-file --union` keeps both sides' edits with no markers, best for notes;
+  - *Keep local* / *Keep remote*: take one side outright.
+- **You get prompted when it cannot merge**: with the default strategy a dialog lists the conflicted files and *Open conflicted files* opens them right inside vsnote for editing. You can also pick *Keep both / Keep local / Keep remote*, or *Abort merge* (returns to your local commit — nothing local is lost).
+- **Manual triggers**: the File menu has **Git Sync (commit · pull · push)** and **Pull Git remote updates**, visible only when the current workspace is a Git repository.
+
+Git must be installed locally and remote credentials must work (your existing credential configuration is reused; syncing never prompts on a terminal). If git complains about identity, run `git config --global user.name` and `git config --global user.email` first.
 
 ---
 

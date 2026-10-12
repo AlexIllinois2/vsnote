@@ -257,9 +257,7 @@ const I18N = {
     fontAlreadyExists: '已存在',
     processing: '处理中…',
     scrollTop: 'TOP',
-    collapseEditor: '折叠编辑器',
     collapsePreview: '折叠预览',
-    restoreEditor: '恢复编辑器',
     restorePreview: '恢复预览',
     collapseHint: '请先切换到编辑视图再使用折叠功能',
     noteHint: 'Note 提示',
@@ -320,8 +318,6 @@ const I18N = {
     printTip2: '如果代码高亮或背景色显示异常，请在<b>更多设置</b>中<b>勾选"背景图形"</b>。',
     editor: '编辑器',
     previewSection: '预览',
-    paneEdit: '编辑',
-    panePreview: '预览',
     column1: '列1',
     column2: '列2',
     column3: '列3',
@@ -433,7 +429,8 @@ const I18N = {
     saveAll: '保存全部',
     discardAll: '放弃全部',
     fileOpened: '已打开: {name}',
-    openFolder: '打开文件夹',
+    openFolder: '打开文件夹…',
+    openDb: '打开 SQLite db…',
     locateActiveFile: '定位到当前文件',
     files: '文件',
     closeFolder: '关闭文件夹',
@@ -455,6 +452,15 @@ const I18N = {
     dbCreatePasswordMsg: '为导出的 db 设置密码（留空则不加密）',
     dbPasswordRequiredMsg: '「{name}」已加密，请输入密码',
     dbWrongPasswordMsg: '密码错误，请重新输入',
+    dbRememberTitle: '记住密码',
+    dbRememberMsg: '下次打开「{name}」时不再询问密码？\n本机只保存派生密钥，不保存明文口令',
+    dbRememberOk: '记住',
+    dbRememberNo: '不记住',
+    dbPasswordRemembered: '已记住密码，下次自动解锁',
+    dbRememberFailed: '记住密码失败',
+    forgetDbPassword: '清除已记住的密码',
+    dbPasswordForgotten: '已清除记住的密码',
+    dbPasswordNoneRemembered: '本机没有记住过该 db 的密码',
     dbNotVsNoteDb: '所选文件不是 vsnote SQLite 数据库',
     dbFileFilter: 'SQLite db',
     dbTargetExists: '目标文件已存在，请换个位置或文件名',
@@ -465,6 +471,29 @@ const I18N = {
     gitSynced: 'Git 已自动提交并推送',
     gitPulled: '已拉取 Git 远端更新',
     gitSyncFailed: 'Git 同步失败',
+    gitConflictStrategy: 'Git 冲突处理',
+    gitConflictMarkers: '自动合并（冲突处写标记，我自己改）',
+    gitConflictUnion: '自动合并（冲突保留双方，不留标记）',
+    gitConflictOurs: '自动合并（冲突保留本地）',
+    gitConflictTheirs: '自动合并（冲突保留远端）',
+    gitConflictHint: '同步顺序：先提交本地改动 → 拉取并合并远端 → 推送。能合并的 git 直接合并，只有双方改到同一处才会冲突：默认在原文件里写入冲突标记让你自己改，也可改成自动保留双方 / 本地 / 远端。',
+    gitConflictTitle: 'Git 合并冲突',
+    gitConflictMsg: '这些文件本地和远端改了同一处，自动合并没能处理。请选择保留方式，或在外部编辑器改好后再次同步。',
+    gitConflictResolved: '冲突已解决，同步完成',
+    gitConflictResolveFailed: '冲突处理失败',
+    gitConflictAborted: '已放弃本次远端合并，本地提交保留',
+    gitConflictPrevUnresolved: '（上次冲突还没解决，本地提交已保留。）',
+    gitConflictMarkerHint: '文件里已写入 git 冲突标记（<<<<<<< HEAD / ======= / >>>>>>> 远端），文件名不变。在编辑器里删掉标记、改成你想要的内容后保存，下次同步会自动完成合并提交并推送。',
+    gitConflictOpenEditor: '打开冲突文件',
+    gitConflictOpenedHint: '已在编辑器打开冲突文件，改好后保存即可自动完成合并',
+    gitConflictPausedHint: '已暂停自动拉取，处理完冲突后用菜单「Git 同步」恢复',
+    gitConflictKeepUnion: '保留双方',
+    gitConflictKeepOurs: '保留本地',
+    gitConflictKeepTheirs: '保留远端',
+    gitConflictOpenFolder: '打开所在文件夹',
+    gitConflictAbortAction: '放弃本次合并',
+    gitSyncMenu: 'Git 同步（提交·拉取·推送）',
+    gitPullMenu: '拉取 Git 远端更新',
     autoSave: '自动保存',
     autoSaveOff: '关闭',
     autoSaveAfter: '停止输入后 {sec} 秒',
@@ -655,9 +684,7 @@ const I18N = {
     fontAlreadyExists: 'already exists',
     processing: 'Processing…',
     scrollTop: 'TOP',
-    collapseEditor: 'Collapse Editor',
     collapsePreview: 'Collapse Preview',
-    restoreEditor: 'Restore Editor',
     restorePreview: 'Restore Preview',
     collapseHint: 'Switch to edit view first to use panel collapse',
     noteHint: 'Note',
@@ -718,8 +745,6 @@ const I18N = {
     printTip2: 'If code highlighting or background colors look wrong, go to <b>More settings</b> and <b>check "Background graphics"</b>.',
     editor: 'Editor',
     previewSection: 'Preview',
-    paneEdit: 'Edit',
-    panePreview: 'Preview',
     column1: 'Col 1',
     column2: 'Col 2',
     column3: 'Col 3',
@@ -832,7 +857,8 @@ const I18N = {
     saveAll: 'Save All',
     discardAll: 'Discard All',
     fileOpened: 'Opened: {name}',
-    openFolder: 'Open Folder',
+    openFolder: 'Open Folder…',
+    openDb: 'Open SQLite db…',
     locateActiveFile: 'Locate Active File',
     files: 'Files',
     closeFolder: 'Close Folder',
@@ -854,6 +880,15 @@ const I18N = {
     dbCreatePasswordMsg: 'Set a password for the exported db (leave empty for no encryption)',
     dbPasswordRequiredMsg: '"{name}" is encrypted. Enter the password',
     dbWrongPasswordMsg: 'Wrong password. Try again',
+    dbRememberTitle: 'Remember Password',
+    dbRememberMsg: 'Stop asking for the password when "{name}" opens next time?\nThis machine stores the derived key only, never the plain password',
+    dbRememberOk: 'Remember',
+    dbRememberNo: 'Do not remember',
+    dbPasswordRemembered: 'Password remembered. It will unlock automatically next time',
+    dbRememberFailed: 'Failed to remember password',
+    forgetDbPassword: 'Clear Remembered Password',
+    dbPasswordForgotten: 'Remembered password cleared',
+    dbPasswordNoneRemembered: 'No remembered password for this db on this machine',
     dbNotVsNoteDb: 'The selected file is not a vsnote SQLite database',
     dbFileFilter: 'SQLite db',
     dbTargetExists: 'Target file already exists. Choose another location or name',
@@ -864,6 +899,29 @@ const I18N = {
     gitSynced: 'Git auto committed and pushed',
     gitPulled: 'Pulled updates from Git remote',
     gitSyncFailed: 'Git sync failed',
+    gitConflictStrategy: 'Git Conflict Handling',
+    gitConflictMarkers: 'Auto merge (mark conflicts, I will edit)',
+    gitConflictUnion: 'Auto merge (keep both sides, no markers)',
+    gitConflictOurs: 'Auto merge (keep local)',
+    gitConflictTheirs: 'Auto merge (keep remote)',
+    gitConflictHint: 'Sync order: commit local changes → pull and merge remote → push. Git merges everything it can; only edits to the same lines conflict. By default conflict markers are written into the file for you to edit — or switch to auto keep both / local / remote.',
+    gitConflictTitle: 'Git Merge Conflict',
+    gitConflictMsg: 'Both local and remote changed the same lines in these files and auto merge could not handle it. Choose what to keep, or edit them externally and sync again.',
+    gitConflictResolved: 'Conflict resolved and synced',
+    gitConflictResolveFailed: 'Failed to resolve conflict',
+    gitConflictAborted: 'Remote merge aborted; local commits kept',
+    gitConflictPrevUnresolved: '(The previous conflict is still unresolved; local commits are kept.)',
+    gitConflictMarkerHint: 'Conflict markers (<<<<<<< HEAD / ======= / >>>>>>> remote) have been written into the files, with the filenames unchanged. Remove the markers, keep the content you want, and save — the next sync commits the merge and pushes automatically.',
+    gitConflictOpenEditor: 'Open conflicted files',
+    gitConflictOpenedHint: 'Conflicted files opened in the editor — edit and save to finish the merge',
+    gitConflictPausedHint: 'Auto pull paused — use the menu item "Git Sync" after resolving the conflict',
+    gitConflictKeepUnion: 'Keep both',
+    gitConflictKeepOurs: 'Keep local',
+    gitConflictKeepTheirs: 'Keep remote',
+    gitConflictOpenFolder: 'Open folder',
+    gitConflictAbortAction: 'Abort merge',
+    gitSyncMenu: 'Git Sync (commit · pull · push)',
+    gitPullMenu: 'Pull Git remote updates',
     autoSave: 'Auto Save',
     autoSaveOff: 'Off',
     autoSaveAfter: '{sec}s after typing stops',
@@ -980,7 +1038,6 @@ class MarkdownEditor {
     if (UPDATER_ENABLED && /Windows/i.test(navigator.userAgent)) {
       setTimeout(() => this.checkUpdate(false), 5000);
     }
-    this.updateSideButtons();
     this.applyLanguage();
   }
 
@@ -1100,7 +1157,11 @@ class MarkdownEditor {
     updateMenuText('btn-export-pdf', t('exportPDF'));
     updateMenuText('btn-export-db', t('exportDb'));
     updateMenuText('btn-export-folder', t('exportFolder'));
-    updateMenuText('btn-open-folder', t('openFolderOrDb'));
+    updateMenuText('btn-forget-db-password', t('forgetDbPassword'));
+    updateMenuText('btn-git-sync', t('gitSyncMenu'));
+    updateMenuText('btn-git-pull', t('gitPullMenu'));
+    updateMenuText('btn-open-folder', t('openFolder'));
+    updateMenuText('btn-open-db', t('openDb'));
     updateMenuText('btn-shortcuts', t('shortcuts'));
     updateMenuText('btn-settings', t('settings'));
     updateMenuText('btn-user-guide', t('userGuide'));
@@ -1138,10 +1199,6 @@ class MarkdownEditor {
       btn.setAttribute('aria-label', t('closeAria'));
     });
 
-    // Pane headers & outline
-    document.querySelector('#editor-pane .pane-header span').textContent = t('paneEdit');
-    document.querySelector('#preview-pane .pane-header span').textContent = t('panePreview');
-
     // Settings dialog — use form element IDs as stable anchors
     document.querySelector('#settings-dialog .dialog-header h2').textContent = t('settings');
     const setSectionTitle = (anchorId, text) => {
@@ -1169,6 +1226,12 @@ class MarkdownEditor {
     setSectionTitle('set-default-view', t('behavior'));
     setRowLabel('set-default-view', t('defaultView'));
     setRowLabel('set-git-autosync', t('gitAutoSync'));
+    setRowLabel('set-git-conflict', t('gitConflictStrategy'));
+    this._applyGitConflictOptionLabels();
+    const gitHint = document.querySelector('#setting-git-conflict-hint .hint-text');
+    if (gitHint) {
+      gitHint.textContent = t('gitConflictHint');
+    }
     setRowLabel('set-autosave', t('autoSave'));
     const autosaveSel = document.getElementById('set-autosave');
     if (autosaveSel) {
@@ -1520,6 +1583,7 @@ class MarkdownEditor {
       editorFont: '',
       previewFont: '',
       gitAutoSyncMinutes: 5,
+      gitConflictStrategy: 'markers',
       autoSave: 0,
     };
   }
@@ -1606,6 +1670,9 @@ class MarkdownEditor {
     document.getElementById('set-font-scheme').value = s.fontScheme || 'system-sans';
     document.getElementById('set-default-view').value = s.defaultView;
     document.getElementById('set-git-autosync').value = String(s.gitAutoSyncMinutes ?? 5);
+    document.getElementById('set-git-conflict').value = s.gitConflictStrategy === 'manual'
+      ? 'markers'
+      : (s.gitConflictStrategy || 'markers');
     document.getElementById('set-autosave').value = String(s.autoSave ?? 0);
     document.getElementById('set-scroll-sync').checked = s.scrollSync;
     document.getElementById('set-code-line-numbers').checked = s.codeLineNumbers;
@@ -1692,6 +1759,12 @@ class MarkdownEditor {
       this.saveSettings();
       // 间隔变更即时生效（当前打开的是 git 工作区时重建定时器；0 关闭）
       this._startGitTimer();
+    });
+    document.getElementById('set-git-conflict').addEventListener('change', (e) => {
+      this.settings.gitConflictStrategy = e.target.value || 'markers';
+      this.saveSettings();
+      // 切回任一自动/半自动策略：解除用户放弃合并后的暂停
+      this._gitPullPaused = false;
     });
     document.getElementById('set-autosave').addEventListener('change', (e) => {
       this.settings.autoSave = Number(e.target.value) || 0;
@@ -1793,17 +1866,7 @@ class MarkdownEditor {
       this.settings.sidebarHidden = true;
       this.saveSettings();
       this.updateOutlineCheck();
-      this.updateSideButtons();
     });
-  }
-
-  updateSideButtons() {
-    const outlineSidebar = document.getElementById('outline-sidebar');
-    const sideLeft = document.getElementById('btn-side-left');
-    const sideRight = document.getElementById('btn-side-right');
-    const outlineWidth = outlineSidebar.classList.contains('hidden') ? 0 : outlineSidebar.offsetWidth;
-    sideLeft.style.left = outlineWidth + 'px';
-    sideRight.style.left = '';
   }
 
     toggleSidebar() {
@@ -1823,7 +1886,6 @@ class MarkdownEditor {
       if (!sidebar.classList.contains('hidden')) {
         this.updateOutline();
       }
-      this.updateSideButtons();
     }
 
     setSidebarTab(tab) {
@@ -1835,7 +1897,6 @@ class MarkdownEditor {
       document.getElementById('folder-content').classList.toggle('hidden', isOutline);
       this.updateSidebarChecks();
       if (!sidebar.classList.contains('hidden')) this.updateOutline();
-      this.updateSideButtons();
       if (tab === 'files' && !this.workspaceFolder) this.renderFolderTree();
     }
 
@@ -1860,7 +1921,6 @@ class MarkdownEditor {
         sidebar.classList.remove('hidden');
       }
       this.updateSidebarChecks();
-      this.updateSideButtons();
     }
 
   updateSidebarChecks() {
@@ -1899,7 +1959,6 @@ class MarkdownEditor {
       newWidth = Math.max(80, Math.min(500, newWidth));
       sidebar.style.width = newWidth + 'px';
       this.cm.refresh();
-      this.updateSideButtons();
     });
 
     document.addEventListener('mouseup', () => {
@@ -2366,6 +2425,7 @@ class MarkdownEditor {
     document.getElementById('set-font-scheme').value = defaults.fontScheme;
     document.getElementById('set-default-view').value = defaults.defaultView;
     document.getElementById('set-git-autosync').value = String(defaults.gitAutoSyncMinutes);
+    document.getElementById('set-git-conflict').value = defaults.gitConflictStrategy || 'markers';
     document.getElementById('set-autosave').value = String(defaults.autoSave);
     this._cancelAutoSaveTimer();
     document.getElementById('set-scroll-sync').checked = defaults.scrollSync;
@@ -3271,9 +3331,9 @@ class MarkdownEditor {
   _onEditorScroll() {
     if (!this.activeTab) return; // 无标签页空状态：不写回滚动位置
     const container = document.querySelector('.editor-container');
-    // 编辑器被隐藏（纯预览模式 / 编辑器折叠）时 getScrollInfo().top 恒为 0，
+    // 编辑器被隐藏（纯预览模式）时 getScrollInfo().top 恒为 0，
     // 若写回 scrollPos 会把已保存位置清零，导致切回编辑跳顶部。仅当编辑器可见才更新快照。
-    if (container && (container.classList.contains('preview-mode') || container.classList.contains('editor-collapsed'))) return;
+    if (container && container.classList.contains('preview-mode')) return;
     const info = this.cm.getScrollInfo();
     this.activeTab.scrollPos = { top: info.top, left: info.left };
 
@@ -3924,6 +3984,13 @@ class MarkdownEditor {
       document.getElementById('file-menu').classList.add('hidden');
       this.openFolder();
     });
+    const btnOpenDb = document.getElementById('btn-open-db');
+    if (btnOpenDb) {
+      btnOpenDb.addEventListener('click', () => {
+        document.getElementById('file-menu').classList.add('hidden');
+        this.openDbFile();
+      });
+    }
     // 最近文件子菜单交互
     document.getElementById('btn-recent').addEventListener('mouseenter', () => {
       this.showRecentSubmenu();
@@ -4004,6 +4071,27 @@ class MarkdownEditor {
       document.getElementById('file-menu').classList.add('hidden');
       this.exportDbWorkspaceToFolder();
     });
+    const btnForgetPw = document.getElementById('btn-forget-db-password');
+    if (btnForgetPw) {
+      btnForgetPw.addEventListener('click', () => {
+        document.getElementById('file-menu').classList.add('hidden');
+        this.forgetRememberedDbPassword();
+      });
+    }
+    const btnGitSync = document.getElementById('btn-git-sync');
+    if (btnGitSync) {
+      btnGitSync.addEventListener('click', () => {
+        document.getElementById('file-menu').classList.add('hidden');
+        this.syncGit({ manual: true });
+      });
+    }
+    const btnGitPull = document.getElementById('btn-git-pull');
+    if (btnGitPull) {
+      btnGitPull.addEventListener('click', () => {
+        document.getElementById('file-menu').classList.add('hidden');
+        this._runGitPull({ manual: true });
+      });
+    }
     document.getElementById('btn-settings').addEventListener('click', () => {
       document.getElementById('file-menu').classList.add('hidden');
       this.showSettings();
@@ -4039,8 +4127,7 @@ class MarkdownEditor {
     });
     document.getElementById('btn-view-preview').addEventListener('click', () => this.setViewMode('preview'));
     document.getElementById('btn-view-edit').addEventListener('click', () => this.setViewMode('edit'));
-    document.getElementById('btn-side-left').addEventListener('click', () => this.toggleCollapse('editor'));
-    document.getElementById('btn-side-right').addEventListener('click', () => this.toggleCollapse('preview'));
+    document.getElementById('btn-side-right').addEventListener('click', () => this.togglePreviewCollapse());
     document.getElementById('large-file-banner-close').addEventListener('click', () => {
       this.hideLargeFileNotice();
       this._largeFileNoticeDismissed = true;
@@ -4077,7 +4164,6 @@ class MarkdownEditor {
 
     window.addEventListener('resize', () => {
       this.updateMaximizeIcon();
-      this.updateSideButtons();
     });
 
     // 退出时全量 revoke Blob URL，避免长会话累积的 dataUri→blob 映射泄漏内存
@@ -4302,7 +4388,6 @@ class MarkdownEditor {
         previewPane.style.width = '';
         this._editorPercent = editorPercent;
         this.cm.refresh();
-        this.updateSideButtons();
       }
     };
 
@@ -4333,9 +4418,8 @@ class MarkdownEditor {
   applyPreviewPaneWidth() {
     const container = document.querySelector('.editor-container');
     if (!container) return;
-    // 纯预览 / 编辑器折叠 / 预览折叠 由 CSS 类控制布局，禁止用用户分屏宽度覆盖，否则占不满且留空白
+    // 纯预览 / 预览折叠 由 CSS 类控制布局，禁止用用户分屏宽度覆盖，否则占不满且留空白
     if (container.classList.contains('preview-mode')
-        || container.classList.contains('editor-collapsed')
         || container.classList.contains('preview-collapsed')) return;
     const pw = this.settings.previewPaneWidth;
     if (!pw) return;
@@ -5704,9 +5788,11 @@ class MarkdownEditor {
     });
   }
 
-  showConfirmDialog(title, message, action = null) {
+  showConfirmDialog(title, message, action = null, labels = null) {
     return Dialogs.showConfirmDialog({
       title, message, action,
+      confirmLabel: labels && labels.confirm,
+      cancelLabel: labels && labels.cancel,
       t: (k, p) => this.t(k, p),
       showToast: (msg, type) => this.showToast(msg, type),
       doc: document,
@@ -6221,31 +6307,47 @@ class MarkdownEditor {
     }
   }
 
+  // 菜单「打开文件夹…」：直接选文件夹作为工作区
   async openFolder() {
+    await this._pickFolderAndOpen();
+  }
+
+  // 菜单「打开 SQLite db…」：直接选 db 文件作为工作区
+  async openDbFile() {
+    await this._pickDbAndOpen();
+  }
+
+  // 空状态 / 欢迎入口：先选工作区类型，再走对应入口
+  async openWorkspace() {
     const choice = await this.showOpenTargetDialog();
-    if (choice === 'folder') {
-      try {
-        const selected = await dialogOpen({ directory: true });
-        if (!selected) return;
-        const folderPath = Array.isArray(selected) ? selected[0] : selected;
-        if (!folderPath) return;
-        await this.openFolderPath(folderPath);
-      } catch (e) {
-        this.setStatus(this.t('openFailed') + ': ' + e);
-      }
-    } else if (choice === 'db') {
-      try {
-        const selected = await dialogOpen({
-          multiple: false,
-          filters: [{ name: this.t('dbFileFilter'), extensions: ['db', 'sqlite', 'sqlite3', 'vsdb'] }]
-        });
-        if (!selected) return;
-        const dbPath = Array.isArray(selected) ? selected[0] : selected;
-        if (!dbPath) return;
-        await this.openDbWorkspace(dbPath);
-      } catch (e) {
-        this.setStatus(this.t('openFailed') + ': ' + e);
-      }
+    if (choice === 'folder') await this._pickFolderAndOpen();
+    else if (choice === 'db') await this._pickDbAndOpen();
+  }
+
+  async _pickFolderAndOpen() {
+    try {
+      const selected = await dialogOpen({ directory: true });
+      if (!selected) return;
+      const folderPath = Array.isArray(selected) ? selected[0] : selected;
+      if (!folderPath) return;
+      await this.openFolderPath(folderPath);
+    } catch (e) {
+      this.setStatus(this.t('openFailed') + ': ' + e);
+    }
+  }
+
+  async _pickDbAndOpen() {
+    try {
+      const selected = await dialogOpen({
+        multiple: false,
+        filters: [{ name: this.t('dbFileFilter'), extensions: ['db', 'sqlite', 'sqlite3', 'vsdb'] }]
+      });
+      if (!selected) return;
+      const dbPath = Array.isArray(selected) ? selected[0] : selected;
+      if (!dbPath) return;
+      await this.openDbWorkspace(dbPath);
+    } catch (e) {
+      this.setStatus(this.t('openFailed') + ': ' + e);
     }
   }
 
@@ -6386,9 +6488,13 @@ class MarkdownEditor {
   // 确保 SQLite db 已打开（含密码重试循环）；取消 / 失败返回 false
   async _ensureDbOpen(dbPath) {
     let password = null;
+    // 本次是否由用户手输密码并通过校验 —— 决定要不要问「记住密码」。
+    // 命中本机缓存密钥的自动解锁不会置位，因此不会再打扰用户。
+    let typedPassword = false;
     for (;;) {
       try {
         await invoke('db_open', { path: dbPath, password });
+        if (typedPassword) await this._askRememberDbPassword(dbPath);
         return true;
       } catch (err) {
         const kind = this._dbErrorKind(err);
@@ -6410,7 +6516,41 @@ class MarkdownEditor {
           return false;
         }
         if (!password) return false; // 取消或空密码视为放弃打开
+        typedPassword = true;
       }
+    }
+  }
+
+  // 密码校验通过后询问一次「是否记住密码」。记住的是后端派生的 32 字节密钥
+  // （应用数据目录 db-keys.json），不是明文口令；取消 / 「不记住」都不落盘任何凭据。
+  async _askRememberDbPassword(dbPath) {
+    const remember = await this.showConfirmDialog(
+      this.t('dbRememberTitle'),
+      this.t('dbRememberMsg', { name: this.baseName(dbPath) }),
+      null,
+      { confirm: this.t('dbRememberOk'), cancel: this.t('dbRememberNo') }
+    );
+    if (!remember) return;
+    try {
+      await invoke('db_remember_password', { path: dbPath });
+      this.showToast(this.t('dbPasswordRemembered'), 'success');
+    } catch (e) {
+      this.showToast(this.t('dbRememberFailed') + ': ' + this._dbErrorMessage(String(e)), 'danger');
+    }
+  }
+
+  // 菜单「清除已记住的密码」：删除本机缓存的派生密钥，下次打开该 db 重新询问密码
+  async forgetRememberedDbPassword() {
+    const dbPath = this.workspaceFolder;
+    if (!dbPath || !this.isDbWorkspacePath(dbPath)) return;
+    try {
+      const removed = await invoke('db_forget_password', { path: dbPath });
+      this.showToast(
+        removed ? this.t('dbPasswordForgotten') : this.t('dbPasswordNoneRemembered'),
+        removed ? 'success' : 'info'
+      );
+    } catch (e) {
+      this.showToast(this.t('failed') + ': ' + this._dbErrorMessage(String(e)), 'danger');
     }
   }
 
@@ -6466,6 +6606,14 @@ class MarkdownEditor {
     const folderItem = document.getElementById('btn-export-folder');
     if (dbItem) dbItem.classList.toggle('hidden', !this.workspaceFolder || isDb);
     if (folderItem) folderItem.classList.toggle('hidden', !isDb);
+    const forgetItem = document.getElementById('btn-forget-db-password');
+    if (forgetItem) forgetItem.classList.toggle('hidden', !isDb);
+    // Git 菜单项：仅真实文件夹 git 工作区可见
+    const isGit = !!this.workspaceFolder && !isDb && !!this._gitRepo;
+    for (const id of ['btn-git-sync', 'btn-git-pull', 'sep-git']) {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('hidden', !isGit);
+    }
   }
 
   // 导出前处理未保存修改：保存 / 放弃 / 取消；返回是否可以继续导出
@@ -6536,17 +6684,59 @@ class MarkdownEditor {
   }
 
   // ── Git 自动同步（仅真实文件夹且含 .git 的工作区；SQLite db 工作区不适用）──
+  //
+  // 契约（用户要求，勿改回 rebase）：
+  //   ① 定时 + 保存后触发：提交本地改动 → 拉取并合并远端（先拉）→ 推送（后推）；
+  //   ② 拉取用 merge，非冲突改动由 git 自动合并，不改写已推送历史；
+  //   ③ 冲突按设置策略自动解决：union 保留双方 / ours 保留本地 / theirs 保留远端；
+  //   ④ 策略为 manual 或自动解决失败：保留冲突现场（冲突标记留在文件里），
+  //      弹出冲突文件列表让用户选保留方式、打开文件夹自行编辑，或放弃本次合并。
 
-  // 打开文件夹工作区后检测 git 仓库：启用定时 pull 与保存后自动 commit+push
+  // markers（默认）：能合并的 git 自动合并，合不了的在原文件里写 git 标准冲突标记，
+  //                  文件名不变，用户在编辑器里改好后保存即可。
+  // union / ours / theirs：自动保留双方 / 本地 / 远端，不留标记。
+  gitConflictStrategy() {
+    const v = this.settings.gitConflictStrategy;
+    if (v === 'manual') return 'markers'; // 旧值兼容
+    return (v === 'ours' || v === 'theirs' || v === 'union' || v === 'markers') ? v : 'markers';
+  }
+
+  _applyGitConflictOptionLabels() {
+    const sel = document.getElementById('set-git-conflict');
+    if (!sel) return;
+    const map = {
+      markers: 'gitConflictMarkers',
+      union: 'gitConflictUnion',
+      ours: 'gitConflictOurs',
+      theirs: 'gitConflictTheirs',
+    };
+    for (const opt of sel.options) {
+      const key = map[opt.value];
+      if (key) opt.text = this.t(key);
+    }
+  }
+
+  // 打开文件夹工作区后检测 git 仓库：先拉一次远端，再启动定时器
   async _initGitSync() {
     this._stopGitSync();
+    this._gitPullPaused = false;
     if (!this.workspaceFolder || this.isDbWorkspacePath(this.workspaceFolder)) return;
     try {
       this._gitRepo = await invoke('git_check', { path: this.workspaceFolder });
     } catch (e) {
       this._gitRepo = false;
     }
+    this.updateWorkspaceMenuState();
     if (!this._gitRepo) return;
+    // 上次退出遗留的未解决冲突：先提示处理，再继续自动同步
+    try {
+      const st = await invoke('git_status', { path: this.workspaceFolder });
+      if (st && st.conflicts && st.conflicts.length) {
+        await this._handleGitConflict(st.conflicts, 'unresolved');
+      }
+    } catch (e) {
+      console.warn('[git-status]', e);
+    }
     this._runGitPull(); // 打开时先拉取一次远端更新（fire-and-forget）
     this._startGitTimer();
   }
@@ -6561,48 +6751,212 @@ class MarkdownEditor {
     return !!this._gitRepo && (Number(this.settings.gitAutoSyncMinutes) || 0) > 0;
   }
 
-  // 保存 / 文件树增删改后调用：防抖 3s 合并连续变更，再触发 commit+push
+  // 保存 / 文件树增删改后调用：防抖 3s 合并连续变更，再触发一次完整同步
   _noteFsChanged() {
     if (!this.gitAutoSyncEnabled()) return;
     clearTimeout(this._gitCommitTimer);
-    this._gitCommitTimer = setTimeout(() => this._runGitAutoSync(), 3000);
-  }
-
-  async _runGitAutoSync() {
-    if (!this.gitAutoSyncEnabled() || this._gitSyncing || !this.workspaceFolder) return;
-    this._gitSyncing = true;
-    try {
-      await invoke('git_auto_sync', {
-        path: this.workspaceFolder,
-        message: 'vsnote: auto sync at ' + new Date().toLocaleString()
-      });
-      this.setStatus(this.t('gitSynced'));
-    } catch (e) {
-      this.showToast(this.t('gitSyncFailed') + ': ' + e, 'danger');
-    } finally {
-      this._gitSyncing = false;
-    }
+    this._gitCommitTimer = setTimeout(() => this.syncGit(), 3000);
   }
 
   _startGitTimer() {
     if (this._gitPullTimer) { clearInterval(this._gitPullTimer); this._gitPullTimer = null; }
     if (!this.gitAutoSyncEnabled()) return;
     const ms = Number(this.settings.gitAutoSyncMinutes) * 60 * 1000;
-    this._gitPullTimer = setInterval(() => this._runGitPull(), ms);
+    // 定时自动提交 + 先拉后推：即便没有编辑事件（外部程序改动 / 上次同步残留）也会被提交并推走
+    this._gitPullTimer = setInterval(() => this.syncGit({ silent: true }), ms);
   }
 
-  // 定时拉取：干净工作区才 pull（脏跳过，等保存触发的同步处理）；失败静默不打断写作
-  async _runGitPull() {
-    if (!this.gitAutoSyncEnabled() || this._gitSyncing || !this.workspaceFolder) return;
+  // 完整同步：commit → pull(merge) → push。
+  // silent=true 定时场景（只在有实质结果时提示）；manual=true 菜单手动触发（忽略暂停并解除暂停）。
+  // 返回后端结果对象；冲突时交给 _handleGitConflict 弹窗。
+  async syncGit({ silent = false, manual = false } = {}) {
+    if (!this.gitAutoSyncEnabled() || this._gitSyncing || !this.workspaceFolder) return null;
+    // 用户放弃过一次远端合并：暂停自动同步，避免每次定时都撞同一处冲突
+    if (this._gitPullPaused && !manual) return null;
     this._gitSyncing = true;
     try {
-      const res = await invoke('git_auto_pull', { path: this.workspaceFolder });
-      if (res && res.updated) this.setStatus(this.t('gitPulled'));
+      const res = await invoke('git_auto_sync', {
+        path: this.workspaceFolder,
+        message: 'vsnote: auto sync at ' + new Date().toLocaleString(),
+        strategy: this.gitConflictStrategy(),
+      });
+      if (res && res.conflict) {
+        this._scheduleTreeRefresh(); // 冲突标记已写入文件，先让树反映出来
+        await this._handleGitConflict(res.conflicts, res.stage);
+        return res;
+      }
+      if (res && (res.pulled || res.resolved)) this._scheduleTreeRefresh();
+      if (res && res.resolved) {
+        this._gitPullPaused = false;
+        this.setStatus(this.t('gitConflictResolved'));
+      } else if (!silent && res && (res.committed || res.pushed)) {
+        this._gitPullPaused = false;
+        this.setStatus(this.t('gitSynced'));
+      } else if (manual && res && !res.conflict) {
+        this._gitPullPaused = false;
+      }
+      return res;
     } catch (e) {
-      console.warn('[git-auto-pull]', e);
+      this.showToast(this.t('gitSyncFailed') + ': ' + e, 'danger');
+      return null;
     } finally {
       this._gitSyncing = false;
     }
+  }
+
+  // 只拉取（打开工作区 / 菜单手动触发）：脏工作区交给定时同步先提交再拉。
+  // 失败静默，不打断写作。
+  async _runGitPull({ manual = false } = {}) {
+    if (!this.gitAutoSyncEnabled() || this._gitSyncing || !this.workspaceFolder) return null;
+    if (this._gitPullPaused && !manual) return null; // 用户放弃过合并，暂停自动拉取直到手动触发
+    this._gitSyncing = true;
+    try {
+      const res = await invoke('git_auto_pull', {
+        path: this.workspaceFolder,
+        strategy: this.gitConflictStrategy(),
+      });
+      if (res && res.conflict) {
+        this._scheduleTreeRefresh();
+        await this._handleGitConflict(res.conflicts, 'merge');
+        return res;
+      }
+      if (res && (res.updated || res.resolved)) {
+        this._scheduleTreeRefresh();
+        this.setStatus(res.resolved ? this.t('gitConflictResolved') : this.t('gitPulled'));
+      }
+      return res;
+    } catch (e) {
+      // 手动触发才提示；定时静默
+      if (manual) this.showToast(this.t('gitSyncFailed') + ': ' + e, 'danger');
+      else console.warn('[git-auto-pull]', e);
+      return null;
+    } finally {
+      this._gitSyncing = false;
+    }
+  }
+
+  // 冲突提示：列出冲突文件，让用户选保留方式 / 打开文件夹自行编辑 / 放弃本次合并。
+  // 返回 'resolved' | 'aborted' | 'manual' | null（关闭对话框）。
+  async _handleGitConflict(conflicts, stage) {
+    const files = Array.isArray(conflicts) ? conflicts : [];
+    const dialog = document.getElementById('git-conflict-dialog');
+    const msgEl = document.getElementById('git-conflict-message');
+    const listEl = document.getElementById('git-conflict-files');
+    const btnUnion = document.getElementById('git-conflict-union');
+    const btnOurs = document.getElementById('git-conflict-ours');
+    const btnTheirs = document.getElementById('git-conflict-theirs');
+    const btnOpen = document.getElementById('git-conflict-open');
+    const btnAbort = document.getElementById('git-conflict-abort');
+    if (!dialog || !msgEl || !listEl) return null;
+
+    // 默认策略：文件里已写入 git 标准冲突标记，引导用户在编辑器里改
+    const useMarkers = this.gitConflictStrategy() === 'markers';
+    document.getElementById('git-conflict-title').textContent = this.t('gitConflictTitle');
+    msgEl.textContent = (stage === 'unresolved'
+      ? this.t('gitConflictMsg') + ' ' + this.t('gitConflictPrevUnresolved')
+      : this.t('gitConflictMsg'))
+      + (useMarkers ? '\n' + this.t('gitConflictMarkerHint') : '');
+    // 路径一律按纯文本渲染（防路径注入 XSS）
+    listEl.textContent = '';
+    for (const f of files) {
+      const li = document.createElement('li');
+      li.textContent = f;
+      listEl.appendChild(li);
+    }
+    btnUnion.textContent = this.t('gitConflictKeepUnion');
+    btnOurs.textContent = this.t('gitConflictKeepOurs');
+    btnTheirs.textContent = this.t('gitConflictKeepTheirs');
+    btnOpen.textContent = this.t('gitConflictOpenEditor');
+    btnAbort.textContent = this.t('gitConflictAbortAction');
+    // 默认策略下主按钮是「打开冲突文件」（让用户自己改标记），其余策略退化为主按钮「保留双方」
+    btnUnion.classList.toggle('dialog-btn-primary', !useMarkers);
+    btnOpen.classList.toggle('dialog-btn-primary', useMarkers);
+    dialog.classList.remove('hidden');
+
+    const disabled = (on) => {
+      for (const b of [btnUnion, btnOurs, btnTheirs, btnOpen, btnAbort]) b.disabled = on;
+    };
+    // 处理器声明在外层作用域：cleanup 需要引用它们来解绑（内层声明外层读不到）
+    let onUnion, onOurs, onTheirs, onOpen, onAbort, onOverlay;
+    const cleanup = () => {
+      dialog.classList.add('hidden');
+      disabled(false);
+      btnUnion.removeEventListener('click', onUnion);
+      btnOurs.removeEventListener('click', onOurs);
+      btnTheirs.removeEventListener('click', onTheirs);
+      btnOpen.removeEventListener('click', onOpen);
+      btnAbort.removeEventListener('click', onAbort);
+      dialog.removeEventListener('click', onOverlay);
+    };
+
+    return await new Promise((resolve) => {
+      const finish = (v) => { cleanup(); resolve(v); };
+      // 按策略解决 → 提交合并 → 继续推送
+      const doResolve = async (strategy) => {
+        disabled(true);
+        try {
+          const r = await invoke('git_resolve_conflicts', {
+            path: this.workspaceFolder,
+            strategy,
+            files: files.length ? files : null,
+          });
+          disabled(false);
+          if (r && r.resolved) {
+            this._gitPullPaused = false;
+            this._scheduleTreeRefresh();
+            this.setStatus(this.t('gitConflictResolved'));
+            if (r.pushError) this.showToast(this.t('gitSyncFailed') + ': ' + r.pushError, 'danger');
+            finish('resolved');
+            return;
+          }
+          this.showToast(this.t('gitConflictResolveFailed'), 'danger');
+          // 解决失败：保留对话框（不 resolve），让用户换一种方式或打开文件夹手动处理
+          return;
+        } catch (e) {
+          disabled(false);
+          this.showToast(this.t('gitConflictResolveFailed') + ': ' + e, 'danger');
+          return;
+        }
+      };
+      onUnion = () => doResolve('union');
+      onOurs = () => doResolve('ours');
+      onTheirs = () => doResolve('theirs');
+      onOpen = async () => {
+        // 直接在 vsnote 里打开冲突文件（文件名保持原样，内容已是 git 冲突标记），
+        // 用户改好后保存 → _noteFsChanged → 下次同步自动补上合并提交并推送。
+        const absPaths = files.map((f) => (/^[a-zA-Z]:[\\/]|^\\\\|^\//.test(f)
+          ? f
+          : this.workspaceFolder.replace(/[\\/]+$/, '') + '/' + f));
+        finish('manual');
+        for (const p of absPaths.slice(0, 8)) {
+          await this.openFilePath(p);
+        }
+        this.showToast(this.t('gitConflictOpenedHint'), 'success');
+      };
+      onAbort = async () => {
+        disabled(true);
+        try {
+          await invoke('git_abort_merge', { path: this.workspaceFolder });
+          // 放弃后暂停自动拉取，避免远端照样领先导致下次定时同步再次冲突
+          this._gitPullPaused = true;
+          this._scheduleTreeRefresh();
+          this.setStatus(this.t('gitConflictAborted'));
+          this.showToast(this.t('gitConflictPausedHint'), 'danger');
+          finish('aborted');
+        } catch (e) {
+          disabled(false);
+          this.showToast(this.t('gitSyncFailed') + ': ' + e, 'danger');
+        }
+      };
+      onOverlay = (e) => { if (e.target === dialog) finish(null); };
+
+      btnUnion.addEventListener('click', onUnion);
+      btnOurs.addEventListener('click', onOurs);
+      btnTheirs.addEventListener('click', onTheirs);
+      btnOpen.addEventListener('click', onOpen);
+      btnAbort.addEventListener('click', onAbort);
+      dialog.addEventListener('click', onOverlay);
+    });
   }
 
   // 统一「一批路径按目录/文件分发」：目录加载为工作区（仅第一个，多余目录提示忽略），
@@ -6689,7 +7043,7 @@ class MarkdownEditor {
       const empty = document.createElement('button');
       empty.className = 'folder-empty';
       empty.textContent = this.t('openFolderOrDb');
-      empty.addEventListener('click', () => this.openFolder());
+      empty.addEventListener('click', () => this.openWorkspace());
       treeEl.appendChild(empty);
       return;
     }
@@ -9168,7 +9522,6 @@ input[type="checkbox"]:checked::after { display: none !important; }
     const previewPane = document.getElementById('preview-pane');
     const btnPreview = document.getElementById('btn-view-preview');
     const btnEdit = document.getElementById('btn-view-edit');
-    const sideLeft = document.getElementById('btn-side-left');
     const sideRight = document.getElementById('btn-side-right');
 
     editorPane.style.flex = '';
@@ -9176,19 +9529,15 @@ input[type="checkbox"]:checked::after { display: none !important; }
     previewPane.style.flex = '';
     previewPane.style.width = '';
 
-    container.classList.remove('preview-mode', 'editor-collapsed', 'preview-collapsed');
+    container.classList.remove('preview-mode', 'preview-collapsed');
 
     btnPreview.classList.toggle('active', this.viewMode === 'preview');
     btnEdit.classList.toggle('active', this.viewMode === 'edit');
 
     if (this.viewMode === 'preview') {
       container.classList.add('preview-mode');
-      sideLeft.classList.add('side-hidden');
       sideRight.classList.add('side-hidden');
     } else {
-      sideLeft.classList.remove('side-hidden', 'side-active');
-      sideLeft.innerHTML = '&#9664;';
-      sideLeft.title = this.t('collapseEditor');
       sideRight.classList.remove('side-hidden', 'side-active');
       sideRight.innerHTML = '&#9654;';
       sideRight.title = this.t('collapsePreview');
@@ -9199,7 +9548,6 @@ input[type="checkbox"]:checked::after { display: none !important; }
     clearTimeout(this._viewModeRestoreTimer);
     this._viewModeRestoreTimer = setTimeout(() => {
       this.cm.refresh();
-      this.updateSideButtons();
       // 恢复用户保存的预览区宽度
       this.applyPreviewPaneWidth();
       // 切换视图模式后，若虚拟滚动状态与新模式不一致则按新模式重建预览
@@ -9246,7 +9594,8 @@ input[type="checkbox"]:checked::after { display: none !important; }
     }, 50);
   }
 
-  toggleCollapse(pane) {
+  // 折叠/展开预览区（编辑器折叠入口已移除，仅保留预览折叠）
+  togglePreviewCollapse() {
     const container = document.querySelector('.editor-container');
     if (this.viewMode === 'preview') {
       this.setStatus(this.t('collapseHint'));
@@ -9256,7 +9605,6 @@ input[type="checkbox"]:checked::after { display: none !important; }
     this._canScroll.editor = false;
     this._canScroll.preview = false;
 
-    const sideLeft = document.getElementById('btn-side-left');
     const sideRight = document.getElementById('btn-side-right');
     const editorPane = document.getElementById('editor-pane');
     const previewPane = document.getElementById('preview-pane');
@@ -9267,19 +9615,11 @@ input[type="checkbox"]:checked::after { display: none !important; }
     previewPane.style.flex = '';
     previewPane.style.width = '';
 
-    if (pane === 'editor') {
-      container.classList.toggle('editor-collapsed');
-      const isCollapsed = container.classList.contains('editor-collapsed');
-      sideLeft.innerHTML = isCollapsed ? '&#9654;' : '&#9664;';
-      sideLeft.title = isCollapsed ? this.t('restoreEditor') : this.t('collapseEditor');
-      sideLeft.classList.toggle('side-active', isCollapsed);
-    } else {
-      container.classList.toggle('preview-collapsed');
-      const isCollapsed = container.classList.contains('preview-collapsed');
-      sideRight.innerHTML = isCollapsed ? '&#9664;' : '&#9654;';
-      sideRight.title = isCollapsed ? this.t('restorePreview') : this.t('collapsePreview');
-      sideRight.classList.toggle('side-active', isCollapsed);
-    }
+    container.classList.toggle('preview-collapsed');
+    const isCollapsed = container.classList.contains('preview-collapsed');
+    sideRight.innerHTML = isCollapsed ? '&#9664;' : '&#9654;';
+    sideRight.title = isCollapsed ? this.t('restorePreview') : this.t('collapsePreview');
+    sideRight.classList.toggle('side-active', isCollapsed);
 
     let restored = false;
     const doRefresh = () => {
@@ -9287,13 +9627,11 @@ input[type="checkbox"]:checked::after { display: none !important; }
       restored = true;
       this.cm.refresh();
       this._setPreviewScrollTop(previewScrollTop);
-      this.updateSideButtons();
       requestAnimationFrame(() => {
         this._resumeScroll();
       });
     };
-    const targetPane = pane === 'editor' ? editorPane : previewPane;
-    targetPane.addEventListener('transitionend', (e) => {
+    previewPane.addEventListener('transitionend', (e) => {
       if (e.propertyName === 'flex') doRefresh();
     }, { once: true });
     setTimeout(doRefresh, 280);

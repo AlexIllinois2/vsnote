@@ -135,7 +135,10 @@
                 <span class="shortcut">Ctrl+O</span>
               </div>
               <div class="dropdown-item" id="btn-open-folder">
-                <span>打开文件夹或 SQLite db</span>
+                <span>打开文件夹…</span>
+              </div>
+              <div class="dropdown-item" id="btn-open-db">
+                <span>打开 SQLite db…</span>
               </div>
               <div class="dropdown-item dropdown-submenu-trigger" id="btn-recent" data-submenu="recent-files-submenu">
                 <span>打开最近的文件</span>
@@ -172,6 +175,19 @@
               </div>
               <div class="dropdown-item hidden" id="btn-export-folder">
                 <span>导出为文件夹…</span>
+                <span class="shortcut"></span>
+              </div>
+              <div class="dropdown-item hidden" id="btn-forget-db-password">
+                <span>清除已记住的密码</span>
+                <span class="shortcut"></span>
+              </div>
+              <div class="dropdown-separator hidden" id="sep-git"></div>
+              <div class="dropdown-item hidden" id="btn-git-sync">
+                <span>Git 同步（提交·拉取·推送）</span>
+                <span class="shortcut"></span>
+              </div>
+              <div class="dropdown-item hidden" id="btn-git-pull">
+                <span>拉取 Git 远端更新</span>
                 <span class="shortcut"></span>
               </div>
               <div class="dropdown-item" id="btn-shortcuts">
@@ -424,16 +440,10 @@
         </div>
         <div class="editor-row">
           <div class="editor-pane" id="editor-pane">
-            <div class="pane-header">
-              <span>编辑</span>
-            </div>
             <div id="editor-wrapper"></div>
           </div>
           <div class="resizer" id="resizer"></div>
           <div class="preview-pane" id="preview-pane">
-            <div class="pane-header">
-              <span>预览</span>
-            </div>
             <div id="preview-wrapper">
               <div id="preview" class="preview-content"></div>
               <button id="scroll-top-btn" class="scroll-top-btn hidden" title="回到顶部">
@@ -446,7 +456,6 @@
         </div>
         <div id="pane-loading" class="pane-loading hidden"><div class="pane-spinner"></div></div>
       </div>
-      <div class="side-btn" id="btn-side-left" title="折叠编辑器">&#9664;</div>
       <div class="side-btn" id="btn-side-right" title="折叠预览">&#9654;</div>
     </main>
 
@@ -762,6 +771,26 @@
     </div>
   </div>
 
+  <!-- Git 合并冲突对话框：自动合并不了时提示用户介入 -->
+  <div id="git-conflict-dialog" class="dialog-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="git-conflict-title">
+    <div class="dialog git-conflict-dialog">
+      <div class="dialog-header">
+        <h2 id="git-conflict-title">Git 合并冲突</h2>
+      </div>
+      <div class="dialog-content">
+        <p id="git-conflict-message"></p>
+        <ul id="git-conflict-files" class="git-conflict-files"></ul>
+      </div>
+      <div class="dialog-footer">
+        <button id="git-conflict-abort" class="dialog-btn">放弃本次合并</button>
+        <button id="git-conflict-ours" class="dialog-btn">保留本地</button>
+        <button id="git-conflict-theirs" class="dialog-btn">保留远端</button>
+        <button id="git-conflict-union" class="dialog-btn">保留双方</button>
+        <button id="git-conflict-open" class="dialog-btn dialog-btn-primary">打开冲突文件</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 关闭窗口确认对话框 -->
   <div id="close-confirm-dialog" class="dialog-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="close-dialog-title">
     <div class="dialog close-confirm-dialog">
@@ -1071,6 +1100,19 @@
               <option value="10">每 10 分钟</option>
               <option value="30">每 30 分钟</option>
             </select>
+          </div>
+          <div class="settings-row settings-row-stacked">
+            <label>Git 冲突处理</label>
+            <select id="set-git-conflict">
+              <option value="markers" selected>自动合并（冲突处写标记，我自己改）</option>
+              <option value="union">自动合并（冲突保留双方，不留标记）</option>
+              <option value="ours">自动合并（冲突保留本地）</option>
+              <option value="theirs">自动合并（冲突保留远端）</option>
+            </select>
+            <p class="form-hint" id="setting-git-conflict-hint">
+              <svg class="hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              <span class="hint-text">同步时先提交本地改动，再拉取并合并远端；双方改了同一处才会冲突。默认策略下，能合并的 git 自动合并，合不了的会在原文件里写入 git 标准冲突标记（&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD / ======= / &gt;&gt;&gt;&gt;&gt;&gt;&gt; 远端），文件名不变，你在编辑器里改好后保存，下次同步自动完成合并提交并推送。也可改成自动保留双方 / 本地 / 远端。</span>
+            </p>
           </div>
           <div class="settings-row settings-row-stacked">
             <label>自动保存</label>

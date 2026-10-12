@@ -20,6 +20,8 @@
 //
 // 密码校验流程（db_open）：先无密码探测（读 sqlite_master），再按 db_meta 决定
 // PasswordRequired / WrongPassword / 正常打开，错误以结构化 JSON 返回前端提示。
+// PasswordRequired 前会先查本机「记住密码」缓存（db_key_store：派生密钥，非明文口令）能否
+// 直接解锁；缓存失效（口令改过）则丢弃它并回到 PasswordRequired 让用户重输。
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -228,6 +230,10 @@ fn set_meta(conn: &Connection, key: &str, value: &str) -> rusqlite::Result<()> {
 // ====== 打开 / 关闭 ======
 
 const SCHEMA_SQL: &str = "
+CREATE TABLE IF NOT EXISTS db_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS node (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   parent_id INTEGER REFERENCES node(id) ON DELETE CASCADE,
@@ -253,10 +259,102 @@ fn open_conn(path: &str) -> Result<Connection, String> {
     Connection::open(path).map_err(|e| io_err("Io", path, &e.to_string()))
 }
 
+// ====== 记住密码：本机派生密钥缓存 ======
+//
+// 只缓存 PBKDF2 派生出的 32 字节密钥（存 app 数据目录 db-keys.json），不落盘明文口令。
+// 取舍：拿到这台机器磁盘读取权限的人可以解开对应 db 的内容，但拿不到口令本身
+// （口令复用风险消除）；换来的是免重输，以及跳过 60 万次 KDF 迭代。
+// 只有用户在密码校验通过后选「记住」才写入（前端 _askRememberDbPassword）。
+
+type KeyStore = HashMap<String, String>;
+
+/// 缓存键：db 的规范路径。db 改名/移出原目录即失配，下次会重新询问密码。
+fn store_key_of(path: &str) -> String {
+    std::fs::canonicalize(path)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| path.to_string())
+}
+
+fn read_key_store(store: &Path) -> KeyStore {
+    std::fs::read_to_string(store)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn write_key_store(store: &Path, map: &KeyStore) -> Result<(), String> {
+    if let Some(dir) = store.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string_pretty(map).map_err(|e| e.to_string())?;
+    std::fs::write(store, json).map_err(|e| e.to_string())?;
+    // 密钥文件按凭据对待：类 Unix 上收紧到仅属主可读写（Windows 走 ACL，此处 no-op）。
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(store, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
+/// 取缓存密钥；条目缺失 / base64 损坏 / 长度不对都按未记住处理（不会误解锁）。
+fn cached_key(store: &Path, db_path: &str) -> Option<[u8; 32]> {
+    let b64 = read_key_store(store).get(&store_key_of(db_path)).cloned()?;
+    let raw = base64::engine::general_purpose::STANDARD
+        .decode(b64.trim())
+        .ok()?;
+    raw.try_into().ok()
+}
+
+fn erase_cached_key(store: &Path, db_path: &str) {
+    let mut map = read_key_store(store);
+    if map.remove(&store_key_of(db_path)).is_some() {
+        let _ = write_key_store(store, &map);
+    }
+}
+
+/// 记住当前已打开 db 的派生密钥（须已 db_open 成功且该库加密）。
+pub fn remember_key(db_path: &str, store: &Path) -> Result<(), String> {
+    let key = {
+        let reg = registry().lock().map_err(|_| "db registry poisoned".to_string())?;
+        let db = reg
+            .get(db_path)
+            .ok_or_else(|| format!("db 未打开: {}", db_path))?;
+        db.key.ok_or_else(|| "该 db 未加密，无需记住密码".to_string())?
+    };
+    let mut map = read_key_store(store);
+    map.insert(
+        store_key_of(db_path),
+        base64::engine::general_purpose::STANDARD.encode(key),
+    );
+    write_key_store(store, &map)
+}
+
+/// 清除已记住的密码，返回是否确有缓存被删除。
+pub fn forget_key(db_path: &str, store: &Path) -> Result<bool, String> {
+    let mut map = read_key_store(store);
+    let removed = map.remove(&store_key_of(db_path)).is_some();
+    if removed {
+        write_key_store(store, &map)?;
+    }
+    Ok(removed)
+}
+
+/// 密钥能否解开该库的校验值（ENC_CHECK_KEY）。口令路径与缓存密钥路径共用。
+fn key_matches(conn: &Connection, key: &[u8; 32]) -> bool {
+    get_meta(conn, ENC_CHECK_KEY)
+        .and_then(|c| base64::engine::general_purpose::STANDARD.decode(c.trim()).ok())
+        .and_then(|c| unseal(key, &c))
+        .map(|p| p == ENC_CHECK_PLAIN)
+        .unwrap_or(false)
+}
+
 /// 打开（或创建）db 工作区并注册。返回 `{ encrypted, created }`。
+/// key_store 为 Some 时：加密库未给口令先用本机缓存密钥自动解锁（密钥失效则清掉缓存并
+/// 回落 PasswordRequired）；为 None（拿不到应用数据目录）时行为与缓存无关。
 /// 错误 kind：PasswordRequired（加密 db 未给密码）/ WrongPassword（密码错误）/
 /// NotVsNoteDb（存在但不是本应用的 db）/ Io。
-pub fn open(path: &str, password: Option<String>) -> Result<serde_json::Value, String> {
+pub fn open(path: &str, password: Option<String>, key_store: Option<&Path>) -> Result<serde_json::Value, String> {
     let exists = Path::new(path).is_file();
     let empty = exists
         && std::fs::metadata(path)
@@ -307,7 +405,20 @@ pub fn open(path: &str, password: Option<String>) -> Result<serde_json::Value, S
             register(path, conn, None);
             Ok(serde_json::json!({ "encrypted": false, "created": false }))
         }
-        (Some(_), None) => Err(io_err("PasswordRequired", path, "该 SQLite db 已加密，需要密码")),
+        (Some(_), None) => {
+            // 未给口令：先看本机有没有记住过（缓存的是派生密钥，不是明文口令）
+            if let Some(store) = key_store {
+                if let Some(k) = cached_key(store, path) {
+                    if key_matches(&conn, &k) {
+                        register(path, conn, Some(k));
+                        return Ok(serde_json::json!({ "encrypted": true, "created": false }));
+                    }
+                    // 缓存密钥解不开校验值（口令被改过 / db 已换）：丢弃缓存，重新询问
+                    erase_cached_key(store, path);
+                }
+            }
+            Err(io_err("PasswordRequired", path, "该 SQLite db 已加密，需要密码"))
+        }
         (Some(salt_b64), Some(pw)) => {
             if pw.is_empty() {
                 return Err(io_err("PasswordRequired", path, "该 SQLite db 已加密，需要密码"));
@@ -316,12 +427,7 @@ pub fn open(path: &str, password: Option<String>) -> Result<serde_json::Value, S
                 .decode(salt_b64.trim())
                 .map_err(|_| io_err("Io", path, "db_meta.enc_salt 损坏"))?;
             let key = derive_key(&pw, &salt);
-            let check_ok = get_meta(&conn, ENC_CHECK_KEY)
-                .and_then(|c| base64::engine::general_purpose::STANDARD.decode(c.trim()).ok())
-                .and_then(|c| unseal(&key, &c))
-                .map(|p| p == ENC_CHECK_PLAIN)
-                .unwrap_or(false);
-            if !check_ok {
+            if !key_matches(&conn, &key) {
                 return Err(io_err("WrongPassword", path, "密码错误"));
             }
             register(path, conn, Some(key));
@@ -639,11 +745,20 @@ pub fn list_dir(root: &str, path: &str) -> Result<Vec<crate::DirEntryInfo>, Stri
         }
         a.0.to_lowercase().cmp(&b.0.to_lowercase())
     });
+    // 子项路径必须是「根 + 完整相对层级」。
+    // 早期这里写成 root 直拼 name，导致二级及更深节点的虚拟路径退化成 `root/name`
+    // （丢掉中间层级）：再拿它去 read_file / list_dir 时 resolve 不到节点，
+    // 表现为「文件不存在」「文件夹展开是空的」。
+    let base_rel = comps.join("/");
     Ok(entries
         .into_iter()
         .map(|(name, is_dir)| {
-            let path = format!("{}/{}", root, name);
-            crate::DirEntryInfo { name, path, is_dir }
+            let child_path = if base_rel.is_empty() {
+                format!("{}/{}", root, name)
+            } else {
+                format!("{}/{}/{}", root, base_rel, name)
+            };
+            crate::DirEntryInfo { name, path: child_path, is_dir }
         })
         .collect())
 }
@@ -1021,7 +1136,8 @@ pub fn search_in_files(
                     .unwrap_or("")
                     .to_lowercase();
                 if exts.iter().any(|e| *e == ext) {
-                    files.push((id, format!("{}/{}", root, name)));
+                    // 同样要保留完整层级（dir_comps 非空），否则深层文件的路径会退化到根下
+                    files.push((id, format!("{}/{}", root, dir_comps.join("/"))));
                 }
             }
             _ => return Ok(Vec::new()),
@@ -1360,16 +1476,27 @@ pub fn export_to_db(src: &str, dest: &str, password: Option<String>) -> Result<s
         let map = registry().lock().map_err(|_| "db registry poisoned".to_string())?;
         let db = map.get(&root).ok_or_else(|| "db workspace not open".to_string())?;
         let (dst_conn, dst_key) = create_dest_db(dest, &password)?;
-        let count = copy_tree_into(&db.conn, &db.key, None, &dst_conn, &dst_key, None)?;
-        return Ok(serde_json::json!({ "count": count, "encrypted": dst_key.is_some() }));
+        let out = copy_tree_into(&db.conn, &db.key, None, &dst_conn, &dst_key, None)
+            .map(|count| serde_json::json!({ "count": count, "encrypted": dst_key.is_some() }));
+        // 复制失败：丢弃半成品文件，避免下次导出撞「目标文件已存在」
+        if out.is_err() {
+            drop(dst_conn);
+            let _ = std::fs::remove_file(dest);
+        }
+        return out;
     }
     // 源是文件夹
     if !Path::new(src).is_dir() {
         return Err(format!("源不是文件夹或已打开的 SQLite db: {}", src));
     }
     let (dst_conn, dst_key) = create_dest_db(dest, &password)?;
-    let count = copy_fs_into(Path::new(src), &dst_conn, &dst_key, None)?;
-    Ok(serde_json::json!({ "count": count, "encrypted": dst_key.is_some() }))
+    let out = copy_fs_into(Path::new(src), &dst_conn, &dst_key, None)
+        .map(|count| serde_json::json!({ "count": count, "encrypted": dst_key.is_some() }));
+    if out.is_err() {
+        drop(dst_conn);
+        let _ = std::fs::remove_file(dest);
+    }
+    out
 }
 
 /// 把（已打开的）db 工作区导出为文件夹。

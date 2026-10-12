@@ -23,7 +23,6 @@ const HTML = `<!DOCTYPE html><html><body>
   <div id="preview-pane"></div>
   <button id="btn-view-preview"></button>
   <button id="btn-view-edit"></button>
-  <button id="btn-side-left"></button>
   <button id="btn-side-right"></button>
 </body></html>`;
 
@@ -62,7 +61,6 @@ const harnessFn = function () {
   ed._previewVirtual = false;
   ed.previewWindow = null;
   ed.clearPreviewHighlight = () => {};
-  ed.updateSideButtons = () => {};
   ed.updatePreview = () => {};
   // container 供 applyViewMode 使用
   ed.container = document.querySelector('.editor-container');
@@ -155,7 +153,6 @@ const harnessFn = function () {
     ed2._previewVirtual = false;
     ed2.previewWindow = null;
     ed2.clearPreviewHighlight = () => {};
-    ed2.updateSideButtons = () => {};
     ed2.updatePreview = () => {};
     ed2._resumeScroll = () => {};
     ed2._syncEditorToPreviewWindow = () => {};
@@ -205,7 +202,6 @@ const harnessFn = function () {
         e._previewElementList = (e.viewMode === 'preview') ? PL_preview : PL_edit;
       };
       e.clearPreviewHighlight = () => {};
-      e.updateSideButtons = () => {};
       e.updatePreview = () => {};
       e._resumeScroll = () => {};
       e._syncEditorToPreviewWindow = () => {};

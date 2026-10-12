@@ -904,13 +904,34 @@ fn app_data_dir(app: tauri::AppHandle) -> Result<String, String> {
 
 // ====== SQLite 工作区管理命令 ======
 
+// 「记住密码」缓存文件：应用数据目录下 db-keys.json（内容是派生密钥，不是明文口令）。
+// 拿不到应用数据目录时返回 None —— 只是失去自动解锁，不能因此打不开 db。
+fn db_key_store(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    app.path().app_data_dir().ok().map(|d| d.join("db-keys.json"))
+}
+
 // 打开（或新建）SQLite db 工作区并注册。password 为 None / 空串表示按明文库打开；
 // 加密库未给密码返回 kind=PasswordRequired，密码错误返回 kind=WrongPassword，
 // 非 vsnote db 返回 kind=NotVsNoteDb（前端据此弹出密码框或提示）。
+// 未给密码时先用 db_key_store 里记住的派生密钥尝试自动解锁。
 #[tauri::command]
-async fn db_open(path: String, password: Option<String>) -> Result<serde_json::Value, String> {
+async fn db_open(app: tauri::AppHandle, path: String, password: Option<String>) -> Result<serde_json::Value, String> {
     let _ = safe_write_target(&path)?;
-    sqlite_store::open(&path, password)
+    sqlite_store::open(&path, password, db_key_store(&app).as_deref())
+}
+
+// 记住当前已打开 db 的派生密钥（密码校验通过后由用户确认调用）。
+#[tauri::command]
+fn db_remember_password(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let store = db_key_store(&app).ok_or_else(|| "无法定位应用数据目录".to_string())?;
+    sqlite_store::remember_key(&path, &store)
+}
+
+// 清除已记住的密码；返回是否确有缓存被删除（无缓存时前端提示"本来就没有"）。
+#[tauri::command]
+fn db_forget_password(app: tauri::AppHandle, path: String) -> Result<bool, String> {
+    let store = db_key_store(&app).ok_or_else(|| "无法定位应用数据目录".to_string())?;
+    sqlite_store::forget_key(&path, &store)
 }
 
 // 关闭并注销 SQLite 工作区连接（切换/关闭工作区时调用，释放文件句柄）。
@@ -938,110 +959,654 @@ async fn export_to_folder(src: String, dest: String) -> Result<serde_json::Value
 
 // ── Git 自动同步（仅真实文件夹 git 仓库工作区）────────────────────────
 // 通过系统 git CLI 执行（复用用户既有凭据/代理配置），不引入 git2 依赖。
+//
+// 同步语义（用户契约，勿回退成 rebase）：
+//   ① 本地改动先 commit —— 保住本地成果，并为后续合并提供干净基线；
+//   ② 再 pull —— 用 merge（--no-rebase）而非 rebase：不改写已推送历史，
+//      非冲突改动由 git 自动合并，真冲突时冲突文件可被精确定位；
+//   ③ 冲突按策略处理：
+//        markers（默认）能合并的 git 自动合并，合不了的写成 git 标准冲突文件——
+//                文件名保持原样，内容带 <<<<<<< / ======= / >>>>>>> 标记，交给用户在编辑器里改；
+//        union    冲突块两侧都保留（git merge-file --union），不留标记；
+//        ours/theirs 冲突块整体取本地 / 远端；
+//   ④ 最后 push —— 先拉后推，避免 non-fast-forward 被远端拒绝；
+//   ⑤ 自动解决失败（如二进制文件）或策略为 markers：保留冲突现场（MERGE_HEAD + 冲突标记），
+//      把冲突文件列表回传前端，由 UI 提示用户介入。用户改完保存后再次同步，
+//      ⓿ 分支会检测到「合并中但无冲突」并自动补上合并提交。
 
 fn run_git(dir: &str, args: &[&str]) -> Result<std::process::Output, String> {
     std::process::Command::new("git")
         .args(args)
         .current_dir(dir)
+        // 禁用终端交互：缺凭据 / 未知主机时立刻失败，而不是把整个应用挂住
+        .env("GIT_TERMINAL_PROMPT", "0")
         .output()
         .map_err(|e| format!("无法运行 git（未安装或不在 PATH）: {e}"))
 }
 
+fn git_out(out: &std::process::Output) -> String {
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+fn git_err(out: &std::process::Output) -> String {
+    String::from_utf8_lossy(&out.stderr).trim().to_string()
+}
+
 fn git_text(out: &std::process::Output) -> String {
-    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    let e = String::from_utf8_lossy(&out.stderr).trim().to_string();
-    if s.is_empty() { e } else { s }
+    let s = git_out(out);
+    if s.is_empty() { git_err(out) } else { s }
+}
+
+// stdout + stderr 合并小写：git 的关键提示两者都可能出现，统一做关键字匹配
+fn git_lower(out: &std::process::Output) -> String {
+    format!("{} {}", git_err(out), git_out(out)).to_lowercase()
 }
 
 fn is_git_repo(dir: &str) -> bool {
-    std::path::Path::new(dir).join(".git").exists()
+    git_dir_of(dir).is_some()
 }
 
-// pull --rebase 失败兜底：中止 rebase 避免工作区卡在 rebase 状态
-const GIT_NO_UPSTREAM_MARKERS: [&str; 3] = ["no tracking information", "no upstream", "no configured"];
+// .git 既可能是目录（普通仓库）也可能是文件（worktree / submodule 的 gitfile）
+fn git_dir_of(dir: &str) -> Option<std::path::PathBuf> {
+    let dot = std::path::Path::new(dir).join(".git");
+    if dot.is_dir() {
+        return Some(dot);
+    }
+    if dot.is_file() {
+        if let Ok(content) = std::fs::read_to_string(&dot) {
+            for line in content.lines() {
+                if let Some(rest) = line.trim().strip_prefix("gitdir:") {
+                    let p = std::path::PathBuf::from(rest.trim());
+                    return Some(if p.is_absolute() { p } else { std::path::Path::new(dir).join(p) });
+                }
+            }
+        }
+        return Some(dot);
+    }
+    None
+}
+
+// (merge 进行中, rebase 进行中)
+fn git_op_in_progress(dir: &str) -> (bool, bool) {
+    let Some(gd) = git_dir_of(dir) else { return (false, false) };
+    let merge = gd.join("MERGE_HEAD").exists();
+    let rebase = gd.join("rebase-merge").exists() || gd.join("rebase-apply").exists();
+    (merge, rebase)
+}
+
+// git status --porcelain 输出中路径含特殊字符时是 C 风格转义 + 引号，需还原
+fn git_unquote_path(s: &str) -> String {
+    let bytes = s.as_bytes();
+    if !(bytes.len() >= 2 && bytes[0] == b'"' && bytes[bytes.len() - 1] == b'"') {
+        return s.to_string();
+    }
+    let b = &bytes[1..bytes.len() - 1];
+    let mut out: Vec<u8> = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] != b'\\' || i + 1 >= b.len() {
+            out.push(b[i]);
+            i += 1;
+            continue;
+        }
+        match b[i + 1] {
+            b'n' => { out.push(b'\n'); i += 2; }
+            b't' => { out.push(b'\t'); i += 2; }
+            b'r' => { out.push(b'\r'); i += 2; }
+            b'\\' => { out.push(b'\\'); i += 2; }
+            b'"' => { out.push(b'"'); i += 2; }
+            b'0'..=b'7' => {
+                let mut v: u32 = 0;
+                let mut n = 0;
+                while n < 3 && i + 1 + n < b.len() && (b'0'..=b'7').contains(&b[i + 1 + n]) {
+                    v = v * 8 + (b[i + 1 + n] - b'0') as u32;
+                    n += 1;
+                }
+                out.push((v & 0xff) as u8);
+                i += 1 + n;
+            }
+            x => { out.push(x); i += 2; }
+        }
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
+// 返回 (XY 状态码, 路径)；重命名取新路径
+fn git_status_entries(dir: &str) -> Result<Vec<(String, String)>, String> {
+    let o = run_git(dir, &["status", "--porcelain"])?;
+    if !o.status.success() {
+        return Err(format!("git status 失败: {}", git_text(&o)));
+    }
+    let mut v = Vec::new();
+    for line in String::from_utf8_lossy(&o.stdout).lines() {
+        if line.len() < 4 { continue; }
+        let xy = line[..2].to_string();
+        let rest = line[3..].trim();
+        let path = match rest.find(" -> ") {
+            Some(i) => rest[i + 4..].trim(),
+            None => rest,
+        };
+        if !path.is_empty() {
+            v.push((xy, git_unquote_path(path)));
+        }
+    }
+    Ok(v)
+}
+
+// 冲突判定：任一侧为 U，或 add/add（AA）、delete/delete（DD）
+fn git_conflicts_of(entries: &[(String, String)]) -> Vec<String> {
+    entries
+        .iter()
+        .filter(|(xy, _)| {
+            let b = xy.as_bytes();
+            if b.len() < 2 { return false; }
+            let (x, y) = (b[0], b[1]);
+            x == b'U' || y == b'U' || (x == b'A' && y == b'A') || (x == b'D' && y == b'D')
+        })
+        .map(|(_, p)| p.clone())
+        .collect()
+}
+
+fn git_conflicts(dir: &str) -> Result<Vec<String>, String> {
+    Ok(git_conflicts_of(&git_status_entries(dir)?))
+}
+
+fn git_remotes(dir: &str) -> Result<Vec<String>, String> {
+    let o = run_git(dir, &["remote"])?;
+    Ok(git_out(&o).lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
+}
+
+fn git_default_remote(dir: &str) -> String {
+    match git_remotes(dir) {
+        Ok(r) if r.iter().any(|x| x == "origin") => "origin".to_string(),
+        Ok(r) => r.first().cloned().unwrap_or_else(|| "origin".to_string()),
+        Err(_) => "origin".to_string(),
+    }
+}
+
+fn git_branch(dir: &str) -> String {
+    run_git(dir, &["rev-parse", "--abbrev-ref", "HEAD"])
+        .map(|o| if o.status.success() { git_out(&o) } else { String::new() })
+        .unwrap_or_default()
+}
+
+fn git_has_upstream(dir: &str) -> bool {
+    run_git(dir, &["rev-parse", "--abbrev-ref", "@{u}"])
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+// (ahead, behind)：无 upstream 时返回 (0, 0)
+fn git_ahead_behind(dir: &str) -> (u32, u32) {
+    if !git_has_upstream(dir) { return (0, 0); }
+    let o = match run_git(dir, &["rev-list", "--left-right", "--count", "HEAD...@{u}"]) {
+        Ok(o) => o,
+        Err(_) => return (0, 0),
+    };
+    if !o.status.success() { return (0, 0); }
+    // git_out 返回临时 String，必须先绑定，否则 split_whitespace 的借用会悬垂（E0716）
+    let counts = git_out(&o);
+    let mut it = counts.split_whitespace();
+    let ahead = it.next().and_then(|x| x.parse().ok()).unwrap_or(0);
+    let behind = it.next().and_then(|x| x.parse().ok()).unwrap_or(0);
+    (ahead, behind)
+}
+
+// 冲突文件按 union 合并：取 :1(base) :2(ours) :3(theirs) 三阶段，用 git merge-file --union
+// 生成「两侧改动都保留」的结果（比保留单侧更适合笔记类文本）。失败返回 false 交回上层。
+fn git_resolve_union(dir: &str, file: &str) -> Result<bool, String> {
+    let show = |stage: u8| -> Option<Vec<u8>> {
+        let o = run_git(dir, &["show", &format!(":{stage}:{file}")]).ok()?;
+        if o.status.success() { Some(o.stdout) } else { None }
+    };
+    let (ours, theirs) = match (show(2), show(3)) {
+        (Some(a), Some(b)) => (a, b),
+        _ => return Ok(false),
+    };
+    // 二进制（含 NUL）无法按行合并，交回上层按 manual 处理
+    if ours.iter().any(|&b| b == 0) || theirs.iter().any(|&b| b == 0) {
+        return Ok(false);
+    }
+    let base = show(1).unwrap_or_default();
+    let tmp = std::env::temp_dir().join(format!(
+        "vsnote-git-merge-{}-{}",
+        std::process::id(),
+        file.replace(&['/', '\\', ':'][..], "_")
+    ));
+    std::fs::create_dir_all(&tmp).map_err(|e| format!("创建临时目录失败: {e}"))?;
+    let p_ours = tmp.join("ours");
+    let p_base = tmp.join("base");
+    let p_theirs = tmp.join("theirs");
+    std::fs::write(&p_ours, &ours).map_err(|e| format!("写入临时文件失败: {e}"))?;
+    std::fs::write(&p_base, &base).map_err(|e| format!("写入临时文件失败: {e}"))?;
+    std::fs::write(&p_theirs, &theirs).map_err(|e| format!("写入临时文件失败: {e}"))?;
+
+    let m = std::process::Command::new("git")
+        .args(["merge-file", "--union", "-p"])
+        .arg(&p_ours)
+        .arg(&p_base)
+        .arg(&p_theirs)
+        .current_dir(dir)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .map_err(|e| format!("无法运行 git merge-file: {e}"))?;
+
+    let merged = m.stdout;
+    let ok = if merged.is_empty() && !ours.is_empty() {
+        false
+    } else {
+        let target = std::path::Path::new(dir).join(file);
+        if let Some(parent) = target.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        std::fs::write(&target, &merged).is_ok()
+    };
+    let _ = std::fs::remove_dir_all(&tmp);
+    Ok(ok)
+}
+
+// 策略含义：
+//   markers —— 能合并的由 git 自动合并，合不了的写 git 标准冲突标记（<<<<<<< / ======= / >>>>>>>），
+//              文件名保持不变，交给用户在编辑器里改（默认）；manual 是它的旧名，等价。
+//   union   —— 冲突块两侧都保留（git merge-file --union），不留标记
+//   ours/theirs —— 冲突块整体取本地 / 远端
+fn git_keep_markers(strategy: &str) -> bool {
+    strategy == "markers" || strategy == "manual"
+}
+
+fn git_default_strategy(strategy: &str) -> String {
+    if strategy.is_empty() { "markers".to_string() } else { strategy.to_string() }
+}
+
+// 确保冲突文件里真的带 git 标准冲突标记。正常 git merge 已经写好了；
+// 异常场景（文件被外部工具改过、标记被清掉）用 checkout --conflict=merge 从暂存区三阶段重建。
+// 文件名始终是原文件名，不产生 .orig / .mine 之类副本。
+fn git_ensure_conflict_markers(dir: &str, files: &[String]) -> Result<usize, String> {
+    let mut ok = 0;
+    for f in files {
+        let p = std::path::Path::new(dir).join(f);
+        let has_marker = std::fs::read(&p)
+            .map(|b| String::from_utf8_lossy(&b).contains("<<<<<<< "))
+            .unwrap_or(false);
+        if has_marker {
+            ok += 1;
+            continue;
+        }
+        // 二进制等无法写标记的文件：checkout --conflict 会失败，保持原样交给用户
+        let c = run_git(dir, &["checkout", "--conflict=merge", "--", f])?;
+        if c.status.success() {
+            ok += 1;
+        }
+    }
+    Ok(ok)
+}
+
+// 按策略解决一批冲突文件（解决后逐个 add，但不提交，交由调用方完成合并提交）
+fn git_auto_resolve(dir: &str, strategy: &str, files: &[String]) -> Result<bool, String> {
+    for f in files {
+        let ok = match strategy {
+            "ours" => run_git(dir, &["checkout", "--ours", "--", f])?.status.success(),
+            "theirs" => run_git(dir, &["checkout", "--theirs", "--", f])?.status.success(),
+            "union" => git_resolve_union(dir, f)?,
+            _ => false,
+        };
+        if !ok { return Ok(false); }
+        let a = run_git(dir, &["add", "--", f])?;
+        if !a.status.success() { return Ok(false); }
+    }
+    Ok(true)
+}
+
+// pull 的四种结局
+enum GitPullOutcome {
+    Clean,                  // 拉取成功（含 fast-forward / 自动合并 / 已是最新）
+    NoUpstream,             // 无远端或无上游分支，跳过
+    AutoResolved(Vec<String>), // 有冲突但已按策略自动解决并合并提交
+    Conflict(Vec<String>),  // 冲突无法自动解决，保留现场等用户
+}
+
+// 拉取并合并（--no-rebase）：真冲突时按 strategy 处理
+fn git_pull_merge(dir: &str, strategy: &str) -> Result<GitPullOutcome, String> {
+    // fetch 失败不致命（离线场景），交给 pull 再给出最终结论
+    let _ = run_git(dir, &["fetch", "--all", "--tags"]);
+
+    let p = if git_has_upstream(dir) {
+        run_git(dir, &["pull", "--no-rebase", "--no-edit"])?
+    } else {
+        let remote = git_default_remote(dir);
+        let branch = git_branch(dir);
+        if branch.is_empty() || branch == "HEAD" {
+            return Ok(GitPullOutcome::NoUpstream);
+        }
+        run_git(dir, &["pull", "--no-rebase", "--no-edit", &remote, &branch])?
+    };
+
+    if p.status.success() {
+        return Ok(GitPullOutcome::Clean);
+    }
+
+    let conflicts = git_conflicts(dir)?;
+    if !conflicts.is_empty() {
+        if git_keep_markers(strategy) {
+            // 保留 git 标准冲突文件（文件名不变、内容带冲突标记），交给用户在编辑器里解决
+            let _ = git_ensure_conflict_markers(dir, &conflicts);
+            return Ok(GitPullOutcome::Conflict(conflicts));
+        }
+        if git_auto_resolve(dir, strategy, &conflicts)? {
+            let _ = run_git(dir, &["add", "-A"])?;
+            // 处于合并中：--no-edit 生成合并提交；否则兜底给一条普通提交
+            let c = run_git(dir, &["commit", "--no-edit"])?;
+            if !c.status.success() {
+                let c2 = run_git(dir, &["commit", "-m", "vsnote: 自动合并远端改动"])?;
+                if !c2.status.success() {
+                    return Ok(GitPullOutcome::Conflict(git_conflicts(dir)?));
+                }
+            }
+            let left = git_conflicts(dir)?;
+            if !left.is_empty() {
+                return Ok(GitPullOutcome::Conflict(left));
+            }
+            return Ok(GitPullOutcome::AutoResolved(conflicts));
+        }
+        return Ok(GitPullOutcome::Conflict(conflicts));
+    }
+
+    let low = git_lower(&p);
+    if low.contains("no tracking information")
+        || low.contains("no upstream")
+        || low.contains("couldn't find remote ref")
+        || low.contains("no such ref was fetched")
+    {
+        return Ok(GitPullOutcome::NoUpstream);
+    }
+    if low.contains("already up to date") || low.contains("already up-to-date") {
+        return Ok(GitPullOutcome::Clean);
+    }
+    Err(format!("git pull 失败: {}", git_text(&p)))
+}
+
+// 推送；无 upstream 时补 -u 建立追踪（首次推送）
+fn git_push(dir: &str) -> Result<(), String> {
+    let p = run_git(dir, &["push"])?;
+    if p.status.success() {
+        return Ok(());
+    }
+    let low = git_lower(&p);
+    if low.contains("no upstream") || low.contains("no configured push destination") {
+        let remote = git_default_remote(dir);
+        let branch = git_branch(dir);
+        if !branch.is_empty() && branch != "HEAD" {
+            let p2 = run_git(dir, &["push", "-u", &remote, &branch])?;
+            if p2.status.success() {
+                return Ok(());
+            }
+            return Err(format!("git push 失败: {}", git_text(&p2)));
+        }
+    }
+    Err(format!("git push 失败: {}", git_text(&p)))
+}
 
 #[tauri::command]
 async fn git_check(path: String) -> Result<bool, String> {
     Ok(is_git_repo(&path))
 }
 
-// 保存后自动同步：add -A → commit → pull --rebase --autostash → push。
-// 无远端的本地仓库只做本地 commit。commit 无变更不算错误。
+// 仓库状态快照：供 UI 展示分支 / 领先落后 / 脏文件数 / 冲突文件列表
 #[tauri::command]
-async fn git_auto_sync(path: String, message: String) -> Result<serde_json::Value, String> {
+async fn git_status(path: String) -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         if !is_git_repo(&path) {
-            return Err("不是 git 仓库".to_string());
+            return Ok(serde_json::json!({ "isRepo": false }));
         }
-        let remotes = run_git(&path, &["remote"])?;
-        let has_remote = !String::from_utf8_lossy(&remotes.stdout).trim().is_empty();
-        let _ = run_git(&path, &["add", "-A"])?;
-        let c = run_git(&path, &["commit", "-m", &message])?;
-        let committed = c.status.success();
-        if !committed {
-            let out = git_text(&c);
-            if !out.contains("nothing to commit") && !out.contains("no changes added") {
-                return Err(format!(
-                    "git commit 失败: {out}（若提示身份未配置，请先执行 git config --global user.name / user.email）"
-                ));
-            }
-        }
-        let mut pulled = false;
-        let mut pushed = false;
-        if has_remote {
-            let p = run_git(&path, &["pull", "--rebase", "--autostash"])?;
-            if !p.status.success() {
-                let err = String::from_utf8_lossy(&p.stderr).to_lowercase();
-                if !GIT_NO_UPSTREAM_MARKERS.iter().any(|m| err.contains(m)) {
-                    let _ = run_git(&path, &["rebase", "--abort"]);
-                    return Err(format!("git pull --rebase 失败（已中止）: {}", git_text(&p)));
-                }
-            } else {
-                pulled = true;
-            }
-            let pu = run_git(&path, &["push"])?;
-            if !pu.status.success() {
-                return Err(format!("git push 失败: {}", git_text(&pu)));
-            }
-            pushed = true;
-        }
+        let remotes = git_remotes(&path)?;
+        let entries = git_status_entries(&path)?;
+        let (ahead, behind) = git_ahead_behind(&path);
+        let (merging, rebasing) = git_op_in_progress(&path);
         Ok(serde_json::json!({
-            "committed": committed, "pulled": pulled, "pushed": pushed, "noRemote": !has_remote
+            "isRepo": true,
+            "branch": git_branch(&path),
+            "hasRemote": !remotes.is_empty(),
+            "remotes": remotes,
+            "hasUpstream": git_has_upstream(&path),
+            "ahead": ahead,
+            "behind": behind,
+            "changed": entries.len(),
+            "dirty": !entries.is_empty(),
+            "conflicts": git_conflicts_of(&entries),
+            "merging": merging,
+            "rebasing": rebasing,
         }))
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
-// 定时自动拉取：工作区有未提交修改或无远端时跳过；返回 updated 表示 HEAD 是否前进。
+// 完整同步：commit（本地改动）→ pull（merge，冲突按策略处理）→ push。
+// 无远端的本地仓库只做本地 commit。commit 无变更不算错误。
 #[tauri::command]
-async fn git_auto_pull(path: String) -> Result<serde_json::Value, String> {
+async fn git_auto_sync(path: String, message: String, strategy: String) -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         if !is_git_repo(&path) {
             return Err("不是 git 仓库".to_string());
         }
-        let remotes = run_git(&path, &["remote"])?;
-        if String::from_utf8_lossy(&remotes.stdout).trim().is_empty() {
-            return Ok(serde_json::json!({ "skipped": true, "reason": "noRemote" }));
+        let strategy = git_default_strategy(&strategy);
+
+        // ⓿ 清理历史遗留的 rebase 状态（旧版本 --rebase 中断可能留下）
+        let (merging, rebasing) = git_op_in_progress(&path);
+        if rebasing {
+            let _ = run_git(&path, &["rebase", "--abort"]);
         }
-        let st = run_git(&path, &["status", "--porcelain"])?;
-        if !String::from_utf8_lossy(&st.stdout).trim().is_empty() {
-            return Ok(serde_json::json!({ "skipped": true, "reason": "dirty" }));
+        // 已存在未解决冲突：不再叠加操作，直接上报让 UI 提示用户
+        let pending = git_conflicts(&path)?;
+        if !pending.is_empty() {
+            return Ok(serde_json::json!({
+                "conflict": true, "conflicts": pending, "stage": "unresolved",
+                "committed": false, "pulled": false, "pushed": false, "resolved": false
+            }));
         }
-        let before = run_git(&path, &["rev-parse", "HEAD"])?;
-        let p = run_git(&path, &["pull", "--rebase", "--autostash"])?;
-        if !p.status.success() {
-            let err = String::from_utf8_lossy(&p.stderr).to_lowercase();
-            if !GIT_NO_UPSTREAM_MARKERS.iter().any(|m| err.contains(m)) {
-                let _ = run_git(&path, &["rebase", "--abort"]);
-                return Err(format!("git pull 失败（已中止 rebase）: {}", git_text(&p)));
+        // 合并中但冲突已解决（用户在外部编辑器改完）→ 补一次合并提交
+        let mut finished_merge = false;
+        if merging {
+            let c = run_git(&path, &["commit", "--no-edit"])?;
+            finished_merge = c.status.success();
+        }
+
+        let remotes = git_remotes(&path)?;
+        let has_remote = !remotes.is_empty();
+        let mut committed = finished_merge; // 上面补的合并提交也算提交过
+        let mut pulled = false;
+        let mut pushed = false;
+        let mut resolved = false;
+
+        // ❶ 本地改动先提交：保住本地成果，并为后续合并提供干净基线
+        let entries = git_status_entries(&path)?;
+        if !entries.is_empty() {
+            let _ = run_git(&path, &["add", "-A"])?;
+            let c = run_git(&path, &["commit", "-m", &message])?;
+            if c.status.success() {
+                committed = true;
+            } else {
+                let out = git_text(&c);
+                if !out.contains("nothing to commit")
+                    && !out.contains("no changes added")
+                    && !out.contains("nothing added to commit")
+                {
+                    return Err(format!(
+                        "git commit 失败: {out}（若提示身份未配置，请先执行 git config --global user.name / user.email）"
+                    ));
+                }
             }
-            return Ok(serde_json::json!({ "skipped": true, "reason": "noUpstream" }));
         }
-        let after = run_git(&path, &["rev-parse", "HEAD"])?;
-        let updated = String::from_utf8_lossy(&before.stdout).trim()
-            != String::from_utf8_lossy(&after.stdout).trim();
-        Ok(serde_json::json!({ "skipped": false, "updated": updated }))
+
+        // ❷ 先拉：merge 合并远端改动
+        if has_remote {
+            match git_pull_merge(&path, &strategy)? {
+                GitPullOutcome::Clean => { pulled = true; }
+                GitPullOutcome::NoUpstream => {}
+                GitPullOutcome::AutoResolved(files) => {
+                    pulled = true;
+                    resolved = true;
+                    let _ = files;
+                }
+                GitPullOutcome::Conflict(files) => {
+                    return Ok(serde_json::json!({
+                        "conflict": true, "conflicts": files, "stage": "merge",
+                        "committed": committed, "pulled": false, "pushed": false,
+                        "resolved": false, "strategy": strategy,
+                        "markers": git_keep_markers(&strategy)
+                    }));
+                }
+            }
+        }
+
+        // ❸ 后推：先拉后推，避免被远端以 non-fast-forward 拒绝。
+        //    定时同步无变更时不空推，省掉一次无意义的网络往返与凭据询问。
+        if has_remote {
+            let (ahead, _) = git_ahead_behind(&path);
+            if ahead > 0 || !git_has_upstream(&path) {
+                git_push(&path)?;
+                pushed = true;
+            }
+        }
+
+        Ok(serde_json::json!({
+            "conflict": false, "conflicts": [], "committed": committed,
+            "pulled": pulled, "pushed": pushed, "resolved": resolved,
+            "noRemote": !has_remote, "strategy": strategy
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// 只拉取（打开工作区 / 手动拉取）：工作区脏则跳过，交给定时同步先提交再拉。
+// 返回 updated 表示 HEAD 是否前进；conflict=true 时需 UI 提示用户解决。
+#[tauri::command]
+async fn git_auto_pull(path: String, strategy: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if !is_git_repo(&path) {
+            return Err("不是 git 仓库".to_string());
+        }
+        let strategy = git_default_strategy(&strategy);
+        let remotes = git_remotes(&path)?;
+        if remotes.is_empty() {
+            return Ok(serde_json::json!({ "skipped": true, "reason": "noRemote", "updated": false }));
+        }
+        let entries = git_status_entries(&path)?;
+        if !git_conflicts_of(&entries).is_empty() {
+            return Ok(serde_json::json!({
+                "skipped": true, "reason": "conflict", "updated": false,
+                "conflict": true, "conflicts": git_conflicts_of(&entries)
+            }));
+        }
+        if !entries.is_empty() {
+            return Ok(serde_json::json!({ "skipped": true, "reason": "dirty", "updated": false }));
+        }
+        let before = run_git(&path, &["rev-parse", "HEAD"]).map(|o| git_out(&o)).unwrap_or_default();
+
+        match git_pull_merge(&path, &strategy)? {
+            GitPullOutcome::Clean => {}
+            GitPullOutcome::NoUpstream => {
+                return Ok(serde_json::json!({ "skipped": true, "reason": "noUpstream", "updated": false }));
+            }
+            GitPullOutcome::AutoResolved(files) => {
+                return Ok(serde_json::json!({
+                    "skipped": false, "updated": true, "conflict": false,
+                    "resolved": true, "conflicts": files, "strategy": strategy
+                }));
+            }
+            GitPullOutcome::Conflict(files) => {
+                return Ok(serde_json::json!({
+                    "skipped": false, "updated": false, "conflict": true, "conflicts": files
+                }));
+            }
+        }
+
+        let after = run_git(&path, &["rev-parse", "HEAD"]).map(|o| git_out(&o)).unwrap_or_default();
+        let updated = !after.is_empty() && before != after;
+        Ok(serde_json::json!({ "skipped": false, "updated": updated, "conflict": false }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// 用户介入解决冲突：按 strategy 解决（union/ours/theirs）→ 合并提交 → 继续推送。
+// files 为空时自动取当前所有冲突文件。
+#[tauri::command]
+async fn git_resolve_conflicts(
+    path: String,
+    strategy: String,
+    files: Option<Vec<String>>,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if !is_git_repo(&path) {
+            return Err("不是 git 仓库".to_string());
+        }
+        let target = match files {
+            Some(f) if !f.is_empty() => f,
+            _ => git_conflicts(&path)?,
+        };
+        if target.is_empty() {
+            return Ok(serde_json::json!({ "resolved": false, "reason": "noConflict" }));
+        }
+        if !git_auto_resolve(&path, &strategy, &target)? {
+            return Ok(serde_json::json!({
+                "resolved": false, "reason": "strategyFailed", "conflicts": git_conflicts(&path)?
+            }));
+        }
+        let _ = run_git(&path, &["add", "-A"])?;
+        let (merging, _) = git_op_in_progress(&path);
+        let c = if merging {
+            run_git(&path, &["commit", "--no-edit"])?
+        } else {
+            run_git(&path, &["commit", "-m", "vsnote: 解决合并冲突"])?
+        };
+        let committed = c.status.success();
+        let mut pushed = false;
+        let mut push_error: Option<String> = None;
+        if !git_remotes(&path)?.is_empty() {
+            match git_push(&path) {
+                Ok(()) => pushed = true,
+                Err(e) => push_error = Some(e),
+            }
+        }
+        Ok(serde_json::json!({
+            "resolved": true, "committed": committed, "pushed": pushed,
+            "pushError": push_error, "conflicts": git_conflicts(&path)?
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// 放弃本次远端合并：回到合并前的本地提交，本地已提交内容不丢。
+// 无 MERGE_HEAD 但仍有冲突标记时（罕见）回退工作区到 HEAD。
+#[tauri::command]
+async fn git_abort_merge(path: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if !is_git_repo(&path) {
+            return Err("不是 git 仓库".to_string());
+        }
+        let (merging, rebasing) = git_op_in_progress(&path);
+        let has_conflicts = !git_conflicts(&path)?.is_empty();
+        if !merging && !has_conflicts {
+            return Ok(serde_json::json!({ "aborted": false, "reason": "noMerge" }));
+        }
+        if rebasing {
+            let _ = run_git(&path, &["rebase", "--abort"]);
+        }
+        if merging {
+            let a = run_git(&path, &["merge", "--abort"])?;
+            if !a.status.success() {
+                return Err(format!("git merge --abort 失败: {}", git_text(&a)));
+            }
+        } else {
+            let r = run_git(&path, &["reset", "--hard", "HEAD"])?;
+            if !r.status.success() {
+                return Err(format!("git reset --hard 失败: {}", git_text(&r)));
+            }
+        }
+        Ok(serde_json::json!({ "aborted": true, "conflicts": git_conflicts(&path)? }))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -2020,11 +2585,16 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             read_bundled_image_as_base64,
             db_open,
             db_close,
+            db_remember_password,
+            db_forget_password,
             export_to_db,
             export_to_folder,
             git_check,
             git_auto_sync,
-            git_auto_pull
+            git_auto_pull,
+            git_status,
+            git_resolve_conflicts,
+            git_abort_merge
         ])
 }
 

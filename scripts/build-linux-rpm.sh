@@ -219,7 +219,16 @@ npm ci --no-audit --no-fund 2>/dev/null || npm install --no-audit --no-fund
 log "构建渲染 bundle（tauri.conf.json 无 beforeBuildCommand，必须手动执行）"
 npm run build:renderer
 
-# --------------------------------------------------------------- 8. 构建 RPM
+# ------------------------------------------ 8. 强制重建 vsnote 内嵌前端产物
+# ⚠️ 关键坑（2026-10-13 实测）：tauri 通过 cargo 的 build script 把 frontendDist(../src)
+#    内嵌进二进制。若本次只改了前端（src/*.js|html|css）而 src-tauri/ 的 Rust 源码没变，
+#    cargo 会认为 vsnote 的 build script 无需重跑，于是**内嵌的仍是上一次的旧前端** ——
+#    表现为"rpm 装出来还是旧版界面"，而且前端 diff、源码 rsync 全都查不出问题。
+#    这里主动删掉 vsnote 的 build script 产物与指纹，强制 tauri 重新读取并内嵌最新前端。
+log "强制重建 vsnote build script 产物（确保内嵌的是最新前端）"
+rm -rf src-tauri/target/release/build/vsnote-* src-tauri/target/release/.fingerprint/vsnote-*
+
+# --------------------------------------------------------------- 9. 构建 RPM
 log "开始构建 RPM（首次全量编译约 15~30 分钟）"
 npm run tauri -- build --bundles rpm
 
@@ -231,12 +240,12 @@ log "构建完成: ${RPM_FILE}"
 ls -lh "$RPM_FILE"
 file "$RPM_FILE"
 
-# ------------------------------------------------------------ 9. 归档到 dist
+# ----------------------------------------------------------- 10. 归档到 dist
 mkdir -p "${SRC_ROOT}/dist"
 cp -f "$RPM_FILE" "${SRC_ROOT}/dist/"
 log "已复制到: ${SRC_ROOT}/dist/$(basename "$RPM_FILE")"
 
-# --------------------------------------------------------- 10. 还原 Cargo.toml
+# -------------------------------------------------------- 11. 还原 Cargo.toml
 if [ -f "${CARGO_TOML}.orig" ]; then
   mv -f "${CARGO_TOML}.orig" "$CARGO_TOML"
   log "已还原 src-tauri/Cargo.toml"

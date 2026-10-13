@@ -54,7 +54,7 @@ In Edit Mode:
 
 ### Sidebar: Outline & Files
 
-Click `View → Sidebar` to show or hide the sidebar. It has two tabs:
+Click the sidebar icon at the top-left to show or hide the sidebar. It has two tabs:
 
 - **Outline**: Automatically shows the document heading structure (H1–H6), indented by level. **Click any heading** — the preview jumps and centers on it. The outline updates in real time as you edit.
 - **Files**: After opening a directory with `File → Open Folder`, this tab shows a tree view of files in that directory. Click a file to open it in a tab. The tree watches the folder for external additions/removals and refreshes automatically.

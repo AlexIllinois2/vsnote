@@ -112,7 +112,6 @@ const I18N = {
     linkMedia: '链接与媒体',
     link: '链接',
     image: '图片',
-    view: '视图',
     outline: '大纲',
     help: '帮助',
     userGuide: '使用说明',
@@ -124,7 +123,6 @@ const I18N = {
     minimize: '最小化',
     maximize: '最大化',
     close: '关闭',
-    ready: '就绪',
     words: '字数',
     chars: '字符',
     lines: '行数',
@@ -432,7 +430,6 @@ const I18N = {
     openFolder: '打开文件夹…',
     openDb: '打开 SQLite db…',
     locateActiveFile: '定位到当前文件',
-    files: '文件',
     closeFolder: '关闭文件夹',
     folderOpened: '已打开文件夹: {path}',
     extraDirsIgnoredBatch: '已忽略 {n} 个多余目录（每次仅打开一个文件夹）',
@@ -441,7 +438,6 @@ const I18N = {
     fontSizeReset: '还原 {base}px',
     switchWorkspaceTitle: '切换工作区',
     switchWorkspaceMsg: '当前已打开工作区，是否切换到 {path}？',
-    sidebar: '侧边栏',
     openFolderOrDb: '打开文件夹或 SQLite db',
     exportDb: '导出为 SQLite db…',
     exportFolder: '导出为文件夹…',
@@ -550,7 +546,6 @@ const I18N = {
     linkMedia: 'Links & Media',
     link: 'Link',
     image: 'Image',
-    view: 'View',
     outline: 'Outline',
     help: 'Help',
     userGuide: 'User Guide',
@@ -562,7 +557,6 @@ const I18N = {
     minimize: 'Minimize',
     maximize: 'Maximize',
     close: 'Close',
-    ready: 'Ready',
     words: 'Words',
     chars: 'Chars',
     lines: 'Lines',
@@ -860,7 +854,6 @@ const I18N = {
     openFolder: 'Open Folder…',
     openDb: 'Open SQLite db…',
     locateActiveFile: 'Locate Active File',
-    files: 'Files',
     closeFolder: 'Close Folder',
     folderOpened: 'Opened folder: {path}',
     extraDirsIgnoredBatch: 'Ignored {n} extra folders (only one folder can be opened at a time)',
@@ -869,7 +862,6 @@ const I18N = {
     fontSizeReset: 'Reset to {base}px',
     switchWorkspaceTitle: 'Switch Workspace',
     switchWorkspaceMsg: 'A workspace is already open. Switch to {path}?',
-    sidebar: 'Sidebar',
     openFolderOrDb: 'Open Folder or SQLite db',
     exportDb: 'Export as SQLite db…',
     exportFolder: 'Export as Folder…',
@@ -941,6 +933,7 @@ class MarkdownEditor {
     this._externalBannerVisible = false;
     this.cm = null;
     this.workspaceFolder = null;
+    this.outlineVisible = false;
     this.expandedFolders = new Set();
     // 文件树右键菜单状态：_fileTreeCtx 为当前右键目标 {path, isDir, nodeEl}；
     // _fileClipboard 为剪切/复制状态 {op:'cut'|'copy', path, isDir}，粘贴时据此调用 move/copy
@@ -1018,7 +1011,6 @@ class MarkdownEditor {
     this.initCrossSearch();
     this.initFileSearchModule();
     this.initGlobalSearchModule();
-    this.initOutline();
     this.initOutlineResizer();
     this.updateOutlineCheck();
     this.initContextMenu();
@@ -1135,7 +1127,6 @@ class MarkdownEditor {
       if (span) span.textContent = text;
     };
     updateToolbarBtn('btn-file', t('file'));
-    updateToolbarBtn('btn-view', t('view'));
     updateToolbarBtn('btn-help', t('help'));
 
     // File menu items
@@ -1167,9 +1158,8 @@ class MarkdownEditor {
     updateMenuText('btn-user-guide', t('userGuide'));
     updateMenuText('btn-about', t('about'));
 
-    // View mode tabs
-    updateMenuText('btn-view-preview', t('preview'));
-    updateMenuText('btn-view-edit', t('edit'));
+    // View mode toggle（纯图标，无文字标签，只更新 tooltip）
+    this.updateViewToggleTitle();
 
     // Theme button（纯图标，状态靠 icon + tooltip 表达）
     this.updateThemeIcon();
@@ -1179,8 +1169,8 @@ class MarkdownEditor {
     setTitle('btn-maximize', t('maximize'));
     setTitle('btn-close', t('close'));
 
-    // Status bar
-    setText('status-text', t('ready'));
+    // Status bar（空闲时留空，只短暂显示操作结果）
+    setText('status-text', '');
     document.getElementById('word-count').textContent = t('words') + ': 0';
     document.getElementById('char-count').textContent = t('chars') + ': 0';
     document.getElementById('line-count').textContent = t('lines') + ': 0';
@@ -1393,17 +1383,10 @@ class MarkdownEditor {
 
     // Toolbar button titles
     setTitle('btn-file', t('file'));
-    setTitle('btn-view', t('view'));
     setTitle('btn-help', t('help'));
-    setTitle('btn-view-preview', t('previewMode'));
-    setTitle('btn-view-edit', t('editMode'));
-
-    // View menu sidebar toggle
-    const sidebarToggle = document.getElementById('btn-sidebar-toggle');
-    if (sidebarToggle) {
-      const labelSpan = sidebarToggle.querySelector('span:last-of-type');
-      if (labelSpan) labelSpan.textContent = t('sidebar');
-    }
+    setTitle('btn-outline-toggle', t('outline'));
+    setTitle('folder-locate', t('locateActiveFile'));
+    this.updateViewToggleTitle();
 
     // Items with data-action (format toolbar + context menus)
     const insActionKeys = {
@@ -1464,10 +1447,10 @@ class MarkdownEditor {
       }
     });
 
-    // 折叠切换按钮文案随展开/收起状态变化
-    const fmtLabel = document.querySelector('#fmt-collapse .fmt-toggle-label');
-    if (fmtLabel) {
-      fmtLabel.textContent = this.settings.toolbarCollapsed ? t('expandToolbar') : t('collapseToolbar');
+    // 折叠切换按钮：无文字标签，展开/收起含义放在悬浮提示里
+    const fmtCollapseBtn = document.getElementById('fmt-collapse');
+    if (fmtCollapseBtn) {
+      fmtCollapseBtn.title = this.settings.toolbarCollapsed ? t('expandToolbar') : t('collapseToolbar');
     }
 
     // ====== CONTEXT MENUS ======
@@ -1854,62 +1837,46 @@ class MarkdownEditor {
     this.applySettings();
   }
 
-  initOutline() {
-    const outlineSidebar = document.getElementById('outline-sidebar');
-    const outlineClose = document.getElementById('outline-close');
-
-    outlineClose.addEventListener('click', () => {
-      this.settings.outlineWidth = outlineSidebar.offsetWidth;
-      this.saveSettings();
-      outlineSidebar.style.width = '';
-      outlineSidebar.classList.add('hidden');
-      this.settings.sidebarHidden = true;
-      this.saveSettings();
-      this.updateOutlineCheck();
-    });
+  toggleSidebar() {
+    const sidebar = document.getElementById('outline-sidebar');
+    if (sidebar.classList.contains('hidden')) {
+      sidebar.style.width = (this.settings.outlineWidth ?? 240) + 'px';
+      sidebar.classList.remove('hidden');
+    } else {
+      this.settings.outlineWidth = sidebar.offsetWidth;
+      sidebar.style.width = '';
+      sidebar.classList.add('hidden');
+    }
+    this.settings.sidebarHidden = sidebar.classList.contains('hidden');
+    this.saveSettings();
+    this.updateSidebarChecks();
+    if (!sidebar.classList.contains('hidden')) this.updateOutline();
   }
 
-    toggleSidebar() {
-      const sidebar = document.getElementById('outline-sidebar');
-      const wasHidden = sidebar.classList.contains('hidden');
-      if (wasHidden) {
-        sidebar.style.width = (this.settings.outlineWidth ?? 240) + 'px';
-        sidebar.classList.remove('hidden');
-      } else {
-        this.settings.outlineWidth = sidebar.offsetWidth;
-        sidebar.style.width = '';
-        sidebar.classList.add('hidden');
-      }
-      this.settings.sidebarHidden = sidebar.classList.contains('hidden');
+  setOutlineVisible(visible) {
+    this.outlineVisible = visible;
+    const btn = document.getElementById('btn-outline-toggle');
+    if (btn) {
+      btn.classList.toggle('active', visible);
+      btn.setAttribute('aria-pressed', visible ? 'true' : 'false');
+    }
+    document.getElementById('outline-content').classList.toggle('hidden', !visible);
+    document.getElementById('folder-content').classList.toggle('hidden', visible);
+    if (visible) this.updateOutline();
+  }
+
+  showFilesPanel() {
+    const sidebar = document.getElementById('outline-sidebar');
+    if (sidebar.classList.contains('hidden')) {
+      sidebar.style.width = (this.settings.outlineWidth ?? 240) + 'px';
+      sidebar.classList.remove('hidden');
+      this.settings.sidebarHidden = false;
       this.saveSettings();
-      this.updateSidebarChecks();
-      if (!sidebar.classList.contains('hidden')) {
-        this.updateOutline();
-      }
     }
-
-    setSidebarTab(tab) {
-      const sidebar = document.getElementById('outline-sidebar');
-      const isOutline = tab === 'outline';
-      document.getElementById('tab-outline').classList.toggle('active', isOutline);
-      document.getElementById('tab-files').classList.toggle('active', !isOutline);
-      document.getElementById('outline-content').classList.toggle('hidden', !isOutline);
-      document.getElementById('folder-content').classList.toggle('hidden', isOutline);
-      this.updateSidebarChecks();
-      if (!sidebar.classList.contains('hidden')) this.updateOutline();
-      if (tab === 'files' && !this.workspaceFolder) this.renderFolderTree();
-    }
-
-    showSidebarTab(tab) {
-      const sidebar = document.getElementById('outline-sidebar');
-      if (sidebar.classList.contains('hidden')) {
-        sidebar.style.width = (this.settings.outlineWidth ?? 240) + 'px';
-        sidebar.classList.remove('hidden');
-        this.settings.sidebarHidden = false;
-        this.saveSettings();
-      }
-      this.setSidebarTab(tab);
-    }
+    this.setOutlineVisible(false);
+    if (!this.workspaceFolder) this.renderFolderTree();
+    this.updateSidebarChecks();
+  }
 
     applySidebarState() {
       const sidebar = document.getElementById('outline-sidebar');
@@ -1926,8 +1893,6 @@ class MarkdownEditor {
   updateSidebarChecks() {
     const sidebar = document.getElementById('outline-sidebar');
     const visible = !sidebar.classList.contains('hidden');
-    const sidebarToggle = document.getElementById('btn-sidebar-toggle');
-    if (sidebarToggle) sidebarToggle.classList.toggle('checked', visible);
     // 左上角侧边栏切换图标：展开时高亮，收缩时恢复常态
     const appSidebarToggle = document.getElementById('btn-app-sidebar-toggle');
     if (appSidebarToggle) {
@@ -1975,6 +1940,7 @@ class MarkdownEditor {
   }
 
   updateOutline() {
+    if (!this.outlineVisible) return;
     const content = this.cm.getValue();
     const outlineContent = document.getElementById('outline-content');
     const headings = Outline.extractHeadings(content, { headingToId: (t) => this.headingToId(t) });
@@ -2118,6 +2084,9 @@ class MarkdownEditor {
     await this.applyThemeMode();
     this.applyFontScheme();
     this.applyCustomFonts();
+    // 字号 / 自动换行 / 行号 / 主题都会改变行高，收尾统一重测一次高度表，
+    // 避免 setOption 之外直接改 style 的部分（如 fontSize）漏掉刷新。
+    this.refreshEditorLayout();
   }
 
   // ====== 自定义字体 ======
@@ -2238,6 +2207,22 @@ class MarkdownEditor {
     this.cm.getWrapperElement().style.fontFamily = ef;
     const pf = fam(this.settings.previewFont);
     this.preview.style.fontFamily = pf;
+    // 换字体必然换行高 → CodeMirror 缓存的高度表全废，必须重测，
+    // 否则点击落点/滚动定位会整体偏移（典型：点第 n 行光标落到第 n-1 行）。
+    this.refreshEditorLayout();
+    if (!ef) return;
+    // 字体是「base64 dataURL + font-display:swap」注入的：此刻量到的还是 fallback
+    // 字体的度量，真正的行高要等字体加载完才生效。所以就绪后再重测一次。
+    try {
+      if (document.fonts && document.fonts.load) {
+        const spec = `${this.settings.fontSize || 14}px ${ef}`;
+        Promise.resolve(document.fonts.load(spec, '\u4e2d\u6587AaBb0123'))
+          .then(() => this.refreshEditorLayout(), () => {});
+      }
+      if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+        document.fonts.ready.then(() => this.refreshEditorLayout(), () => {});
+      }
+    } catch (e) { /* 字体 API 不可用时忽略，点击纠偏仍会兜底 */ }
   }
 
   async removeCustomFont(id) {
@@ -3144,6 +3129,16 @@ class MarkdownEditor {
       matchBrackets: true,
       autoCloseBrackets: true,
       indentUnit: this.settings.tabSize,
+      // CodeMirror 在 Windows/Linux 上把 Ctrl+click 映射成「追加光标（多光标）」
+      // （configureMouse 的 addNew 默认取 event.ctrlKey）。本应用 Ctrl+click 是
+      // 「打开链接」专用键，点在非链接文本上会悄悄留下一个游离的第二光标，
+      // 之后打字出现双份内容——用户只会觉得「编辑器突然不稳定」。这里显式关掉，
+      // 按住 Ctrl/⌘ 点击只做普通定位（链接分支由 mousedown 处理并 preventDefault）。
+      configureMouse: (cm, repeat, event) => {
+        const mac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent || '');
+        const held = mac ? event.metaKey : event.ctrlKey;
+        return { addNew: held ? false : undefined };
+      },
       extraKeys: {
         'Enter': (cm) => this._handleTableEnter(cm),
         'Tab': (cm) => {
@@ -3300,30 +3295,152 @@ class MarkdownEditor {
       this.openExternal(url);
     });
 
-    // Ctrl/⌘ 悬停在链接上时把光标变成手型，提示「可点击打开」
-    let _lastEditorLinkHover = false;
-    this.cm.on('mousemove', (cm, ev) => {
-      if (!ev || !(ev.ctrlKey || ev.metaKey)) {
-        if (_lastEditorLinkHover) { _lastEditorLinkHover = false; this._setEditorLinkCursor(false); }
-        return;
-      }
-      const pos = cm.coordsChar({ left: ev.clientX, top: ev.clientY }, 'window');
-      const url = (pos.line >= 0 && pos.line <= cm.lastLine())
-        ? this._extractEditorLink(cm.getLine(pos.line), pos.ch) : null;
-      if (!!url !== _lastEditorLinkHover) {
-        _lastEditorLinkHover = !!url;
-        this._setEditorLinkCursor(!!url);
-      }
-    });
+    // ---- 点击落点纠偏（防「点第 n 行、光标落在第 n-1 行」）----
+    // CodeMirror 用自己缓存的高度表（heightmap）把屏幕坐标换算成行列。字体异步
+    // 加载完成、分栏宽度变化、字号变化之后，只有「当前视口内」的行会被重测，
+    // 视口外的行仍是旧度量，行号前缀和偏移一变，坐标映射就整体平移一行——
+    // 表现就是点哪儿都落在上一行，且不点不动、越点越烦。
+    // 这里用捕获阶段监听（早于 CM 自己的 mousedown 处理，也早于它内部的
+    // posFromMouse 计算），比对「DOM 真实行」与「CM 换算行」，不一致就 refresh
+    // 一次让 CM 重测高度表，之后的点击自然就准了。
+    const scroller = this.cm.getScrollerElement();
+    this._editorHealMouseDown = (ev) => this._healEditorLayoutForMouseEvent(ev);
+    scroller.addEventListener('mousedown', this._editorHealMouseDown, true);
+
+    // Ctrl/⌘ 悬停在链接上时把光标变成手型，提示「可点击打开」。
+    // 注意：CodeMirror 5 **不会**派发 "mousemove" 事件（源码里只有拖拽用的
+    // 原生 mousemove 监听，没有 signal(cm,"mousemove")），原来写 cm.on('mousemove')
+    // 的整段逻辑是死代码、永远不执行——这就是「按住 Ctrl 光标不变」的根因。
+    // 改用 wrapper 上的原生 mousemove。
+    this._editorLinkHover = false;
+    this._lastEditorMouse = null;
+    this._editorMouseMove = (ev) => {
+      this._lastEditorMouse = { x: ev.clientX, y: ev.clientY };
+      this._updateEditorLinkCursor(ev.clientX, ev.clientY, !!(ev.ctrlKey || ev.metaKey));
+    };
+    this.cm.getWrapperElement().addEventListener('mousemove', this._editorMouseMove);
     // CodeMirror 不派发 mouseleave，改用 wrapper 原生事件复位光标
-    this.cm.getWrapperElement().addEventListener('mouseleave', () => {
-      if (_lastEditorLinkHover) { _lastEditorLinkHover = false; this._setEditorLinkCursor(false); }
-    });
+    this._editorMouseLeave = () => {
+      this._lastEditorMouse = null;
+      this._setEditorLinkCursor(false);
+    };
+    this.cm.getWrapperElement().addEventListener('mouseleave', this._editorMouseLeave);
+    // 原地按下/松开 Ctrl（鼠标不动）也要立刻切换手型，否则用户以为没生效
+    this._editorModKey = (ev) => {
+      if (ev.key !== 'Control' && ev.key !== 'Meta' && ev.key !== 'Alt') return;
+      if (!this._lastEditorMouse) return;
+      const held = ev.type === 'keydown' && !!(ev.ctrlKey || ev.metaKey);
+      this._updateEditorLinkCursor(this._lastEditorMouse.x, this._lastEditorMouse.y, held);
+    };
+    document.addEventListener('keydown', this._editorModKey);
+    document.addEventListener('keyup', this._editorModKey);
+    window.addEventListener('blur', this._editorMouseLeave);
+
+    // ---- 尺寸变化自动重测 ----
+    // 分栏拖拽 / 折叠预览 / 大纲侧栏 / 窗口缩放 / 滚动条出现消失，只要编辑区
+    // 宽度变了，lineWrapping 下的行高就全变了。CM 只监听 window.resize，
+    // 容器级变化（flex 过渡、侧栏显隐）不会触发它 → 高度表过期。
+    this._initEditorResizeObserver();
 
     // IME 适配说明：已切换到 inputStyle:'contenteditable'，IME 候选框由
     // WebView2 原生锚定在光标行下方（与浏览器行为一致），不再需要
     // compositionstart 滚动补偿。之前的滚动处理器在视口边缘行上会打断
     // composition（输入不了）+ 触发滚动反馈循环（页面乱滚），已移除。
+  }
+
+  // ====== 编辑器布局自愈 ======
+  // CodeMirror 把屏幕坐标换算成行列时依赖自己缓存的高度表（heightmap）。字体异步
+  // 加载完成、分栏宽度变化、字号变化之后，只有「当前视口内」的行会被重测，视口外的
+  // 行仍是旧度量，行号前缀和整体偏移一变，坐标映射就平移一整行——表现就是
+  // 「点第 n 行、光标落在第 n-1 行」，而且不刷新就一直是错的。
+  // 下面这组方法是自愈基础设施：rAF 合并的 refresh、DOM 真实行号反查、
+  // 以及点击前的「一致性检查 → 不一致就重测」。
+
+  // rAF 合并：一次布局变化可能触发多次请求，只在最后一帧真正测量一次
+  refreshEditorLayout() {
+    if (!this.cm) return;
+    if (this._layoutRefreshRAF) return;
+    const run = () => { this._layoutRefreshRAF = null; this._refreshEditorLayoutNow(); };
+    this._layoutRefreshRAF = (typeof requestAnimationFrame === 'function')
+      ? requestAnimationFrame(run)
+      : setTimeout(run, 16);
+  }
+
+  // 立即重测。点击纠偏必须同步完成，否则本次点击拿到的还是旧高度表。
+  _refreshEditorLayoutNow() {
+    if (!this.cm) return;
+    try { this.cm.refresh(); } catch (e) { console.warn('[TizuMark] cm.refresh failed:', e); }
+  }
+
+  // 容器尺寸变化 → 重测。观察 #editor-wrapper 而非 CM 内部节点：
+  // 它是 height:100% 的 flex 子项，CM 内部重排不会反过来改变它的尺寸，
+  // 因此不会形成「观察 → refresh → 再观察」的死循环。
+  _initEditorResizeObserver() {
+    const host = document.getElementById('editor-wrapper');
+    if (!host || typeof ResizeObserver === 'undefined') return;
+    if (this._editorResizeObserver) return;
+    this._editorResizeObserver = new ResizeObserver(() => this.refreshEditorLayout());
+    this._editorResizeObserver.observe(host);
+  }
+
+  // 从屏幕纵坐标反查「DOM 里真实处于该位置的行号」。只比纵向范围，所以点在行号栏上
+  // 也能得到正确行号（行号栏点击走的 lineAtHeight 同样依赖高度表，一样会错位）。
+  _trueLineAtY(y) {
+    const cm = this.cm;
+    if (!cm || !cm.display || !cm.display.view) return null;
+    const view = cm.display.view;
+    for (let i = 0; i < view.length; i++) {
+      const v = view[i];
+      const node = v && !v.hidden ? (v.node || v.text) : null;
+      if (!node || !node.getBoundingClientRect) continue;
+      const box = node.getBoundingClientRect();
+      if (box.height <= 0) continue;
+      if (y >= box.top && y < box.bottom) {
+        try { return cm.getLineNumber(v.line); } catch (e) { return null; }
+      }
+    }
+    return null;
+  }
+
+  // 从屏幕坐标反查「鼠标底下那个行元素对应的行号」。
+  // 与 cm.coordsChar（走缓存高度表）互为对照：两者不一致即高度表已过期。
+  // 命中不了行元素时（行号栏、行部件、正文下方空白）返回 null，由调用方跳过。
+  _lineFromDomPoint(x, y) {
+    const cm = this.cm;
+    if (!cm || !cm.display || !cm.display.view) return null;
+    if (typeof document.elementFromPoint !== 'function') return null;
+    const el = document.elementFromPoint(x, y);
+    if (!el || !el.closest) return null;
+    const lineEl = el.closest('.CodeMirror-line');
+    if (!lineEl) return null;
+    const view = cm.display.view;
+    for (let i = 0; i < view.length; i++) {
+      const v = view[i];
+      if (!v || v.hidden) continue;
+      // 普通行：node 与 text 是同一个 pre.CodeMirror-line；
+      // 带行部件/标记的行：node 是外层 div，text 才是那个 pre
+      if (v.node === lineEl || v.text === lineEl) {
+        try { return cm.getLineNumber(v.line); } catch (e) { return null; }
+      }
+    }
+    return null;
+  }
+
+  // 点击落点纠偏：注册在 scroller 的捕获阶段，早于 CodeMirror 自己的 mousedown
+  // 处理、也早于它内部的 posFromMouse 计算，所以这里 refresh 完，本次点击就能用上
+  // 新的高度表。只在真的不一致时才 refresh，正常点击零开销。
+  _healEditorLayoutForMouseEvent(ev) {
+    const cm = this.cm;
+    // 左键（定位/拖选）与右键（上下文菜单定位）都用 posFromMouse，一并纠偏
+    if (!cm || !ev || (ev.button !== 0 && ev.button !== 2)) return;
+    const domLine = this._trueLineAtY(ev.clientY);
+    if (domLine == null) return;
+    let cmLine = -1;
+    try {
+      cmLine = cm.coordsChar({ left: ev.clientX, top: ev.clientY }, 'window').line;
+    } catch (e) { return; }
+    if (cmLine === domLine) return;
+    this._refreshEditorLayoutNow();
   }
 
   // 编辑器滚动事件：写回滚动快照 + 驱动预览同步。
@@ -3426,7 +3543,27 @@ class MarkdownEditor {
 
   _setEditorLinkCursor(isLink) {
     const wrap = this.cm && this.cm.getWrapperElement();
-    if (wrap) wrap.style.cursor = isLink ? 'pointer' : '';
+    if (!wrap) return;
+    const next = !!isLink;
+    if (this._editorLinkHover === next) return;
+    this._editorLinkHover = next;
+    // 必须用 class 而不是 wrap.style.cursor：CodeMirror 自带 CSS 里
+    // .CodeMirror-lines 写死了 cursor:text，子元素规则优先于父元素的内联样式，
+    // 只改 wrapper 的 cursor 会被内层覆盖掉，视觉上完全没有变化。
+    wrap.classList.toggle('cm-link-hover', next);
+  }
+
+  // Ctrl/⌘ 悬停在编辑区链接上时切换手型。
+  // 行号取 DOM 真实行、列取 CM 换算值：即使高度表轻微过期也不会把手型标错行。
+  _updateEditorLinkCursor(x, y, ctrlHeld) {
+    const cm = this.cm;
+    if (!cm || !ctrlHeld) return this._setEditorLinkCursor(false);
+    const line = this._lineFromDomPoint(x, y);
+    if (line == null || line > cm.lastLine()) return this._setEditorLinkCursor(false);
+    let ch = 0;
+    try { ch = cm.coordsChar({ left: x, top: y }, 'window').ch; } catch (e) { ch = 0; }
+    const url = this._extractEditorLink(cm.getLine(line), ch);
+    this._setEditorLinkCursor(!!url);
   }
 
   _selectLineRange(cm, fromLine, toLine) {
@@ -3439,6 +3576,11 @@ class MarkdownEditor {
   onGutterClick(cm, line, gutter, ev) {
     if (ev.button !== 0) return;        // 仅左键
     ev.preventDefault();                // 阻止 CM 原生行选区/拖拽干扰
+    // CodeMirror 处理行号栏点击时会在 focus 之前直接 return（onMouseDown 的
+    // clickInGutter 分支），所以点完行号编辑区并没有获得焦点——接着打字毫无反应，
+    // 看起来像「编辑器卡了」。这里补一次聚焦；先聚焦再设选区，避免聚焦时把
+    // 刚选中的行选区冲掉。
+    try { cm.focus(); } catch (e) { /* 聚焦失败不影响选行 */ }
     if (ev.shiftKey) {
       const anchor = this._gutterAnchor == null ? cm.getCursor().line : this._gutterAnchor;
       this._gutterAnchor = anchor;
@@ -3539,6 +3681,9 @@ class MarkdownEditor {
 
       this.updateTabDisplay();
       await this.updatePreview();
+      // 切换标签会同时改字号（每标签独立缩放）和内容，视口外的行高度全部作废。
+      // 先同步重测再恢复滚动，否则恢复位置用的还是上一份高度表 → 落点偏移。
+      this._refreshEditorLayoutNow();
       // 统一恢复该 tab 记忆的编辑器/预览滚动位置。临时关闭滚动同步，避免恢复过程中
       // 程序化滚动事件互相重定位（分屏 + 滚动同步开启时预览会被编辑器同步覆盖，
       // 表现为「切换后预览/页面跳到别处」）。
@@ -3878,7 +4023,6 @@ class MarkdownEditor {
   initEventListeners() {
     const toolbarDropdowns = [
       { btn: 'btn-file', menu: 'file-menu' },
-      { btn: 'btn-view', menu: 'view-menu' },
       { btn: 'btn-help', menu: 'help-menu' },
     ];
 
@@ -3958,9 +4102,6 @@ class MarkdownEditor {
       }
       this._dragState = null;
     });
-    document.getElementById('btn-sidebar-toggle').addEventListener('click', () => {
-      this.toggleSidebar();
-    });
     const appSidebarToggle = document.getElementById('btn-app-sidebar-toggle');
     if (appSidebarToggle) {
       appSidebarToggle.addEventListener('click', () => {
@@ -4021,23 +4162,19 @@ class MarkdownEditor {
         this.openFilePath(path);
       }
     });
-    document.getElementById('folder-close').addEventListener('click', () => {
-      this.closeFolder();
-    });
     const locateBtn = document.getElementById('folder-locate');
     if (locateBtn) {
       locateBtn.title = this.t('locateActiveFile');
       locateBtn.addEventListener('click', () => {
-        this.showSidebarTab('files');
+        this.showFilesPanel();
         this.locateActiveFile();
       });
     }
-    document.getElementById('tab-outline').addEventListener('click', () => {
-      this.showSidebarTab('outline');
-    });
-    document.getElementById('tab-files').addEventListener('click', () => {
-      this.showSidebarTab('files');
-    });
+    const outlineBtn = document.getElementById('btn-outline-toggle');
+    if (outlineBtn) {
+      outlineBtn.title = this.t('outline');
+      outlineBtn.addEventListener('click', () => this.setOutlineVisible(!this.outlineVisible));
+    }
     document.getElementById('btn-save').addEventListener('click', () => {
       document.getElementById('file-menu').classList.add('hidden');
       this.saveFile();
@@ -4125,8 +4262,8 @@ class MarkdownEditor {
         this.newFile();
       }
     });
-    document.getElementById('btn-view-preview').addEventListener('click', () => this.setViewMode('preview'));
-    document.getElementById('btn-view-edit').addEventListener('click', () => this.setViewMode('edit'));
+    // 预览开关是 toggle：已高亮（预览态）再点一次取消高亮回到编辑态
+    document.getElementById('btn-view-preview').addEventListener('click', () => this.toggleViewMode());
     document.getElementById('btn-side-right').addEventListener('click', () => this.togglePreviewCollapse());
     document.getElementById('large-file-banner-close').addEventListener('click', () => {
       this.hideLargeFileNotice();
@@ -4348,6 +4485,10 @@ class MarkdownEditor {
     try {
       await invoke('plugin:webview|set_webview_zoom', { value: next });
     } catch (e) { /* set_webview_zoom 不可用时静默忽略 */ }
+    // 整页缩放改变的是设备像素比，CSS 尺寸不变 → 不会触发 window.resize，
+    // CodeMirror 缓存的字符宽度/行高（cachedCharWidth / cachedTextHeight）就过期了，
+    // 坐标换算随之偏移（点第 n 行落到第 n-1 行）。refresh 里的 clearCaches 会清掉这些缓存。
+    this.refreshEditorLayout();
   }
 
   // 启动时恢复上次会话的 WebView 缩放（Ctrl+/- 调整重启后不再丢失）。
@@ -4358,6 +4499,7 @@ class MarkdownEditor {
       if (!Number.isFinite(v) || v === 1 || v < 0.3 || v > 3) return;
       this._webviewZoom = v;
       Promise.resolve(invoke('plugin:webview|set_webview_zoom', { value: v })).catch(() => {});
+      this.refreshEditorLayout(); // 同上：缩放恢复了要重测字符度量
     } catch { /* localStorage 或 invoke 不可用时跳过 */ }
   }
 
@@ -4447,6 +4589,9 @@ class MarkdownEditor {
     }
     // 更新 CSS 变量
     document.documentElement.style.setProperty('--preview-pane-width', pw + 'px');
+    // 编辑区宽度变了 → lineWrapping 下所有行高都变，高度表必须重测。
+    // 这里改的是 flex，CodeMirror 只监听 window.resize，感知不到容器级变化。
+    this.refreshEditorLayout();
   }
 
   initFindReplace() {
@@ -6242,7 +6387,7 @@ class MarkdownEditor {
       this.expandedFolders = new Set(session.expandedFolders || []);
       this.updateWorkspaceMenuState();
       await this.renderFolderTree();
-      this.setSidebarTab('files');
+      this.setOutlineVisible(false);
       this.saveSession();
       this.startFolderWatch();
       this._initGitSync();
@@ -6361,7 +6506,7 @@ class MarkdownEditor {
       this.workspaceFolder = folderPath;
       this.expandedFolders = new Set();
       await this.renderFolderTree();
-      this.showSidebarTab('files');
+      this.showFilesPanel();
       this.startFolderWatch();
       this.updateWorkspaceMenuState();
       this._initGitSync();
@@ -6564,7 +6709,7 @@ class MarkdownEditor {
       this.workspaceFolder = dbPath;
       this.expandedFolders = new Set();
       await this.renderFolderTree();
-      this.showSidebarTab('files');
+      this.showFilesPanel();
       this.startFolderWatch();
       this.updateWorkspaceMenuState();
       this._stopGitSync();
@@ -7034,11 +7179,11 @@ class MarkdownEditor {
   async renderFolderTree() {
     const treeEl = document.getElementById('folder-tree');
     if (!treeEl) return;
-    const headerEl = document.getElementById('folder-header');
+    const locateEl = document.getElementById('folder-locate');
     const pathEl = document.getElementById('folder-path');
     treeEl.innerHTML = '';
     if (pathEl) pathEl.textContent = this.workspaceFolder || '';
-    if (headerEl) headerEl.classList.toggle('hidden', !this.workspaceFolder);
+    if (locateEl) locateEl.classList.toggle('hidden', !this.workspaceFolder);
     if (!this.workspaceFolder) {
       const empty = document.createElement('button');
       empty.className = 'folder-empty';
@@ -9433,7 +9578,7 @@ input[type="checkbox"]:checked::after { display: none !important; }
     this.statusText.textContent = text;
     setTimeout(() => {
       if (this.statusText.textContent === text) {
-        this.statusText.textContent = this.t('ready');
+        this.statusText.textContent = '';
       }
     }, 3000);
   }
@@ -9516,6 +9661,16 @@ input[type="checkbox"]:checked::after { display: none !important; }
     this.setViewMode(this.viewMode === 'preview' ? 'edit' : 'preview');
   }
 
+  // 预览开关只有一个图标按钮，靠 tooltip 说明「点了会发生什么」
+  updateViewToggleTitle() {
+    const btn = document.getElementById('btn-view-preview');
+    if (!btn || typeof this.t !== 'function') return;
+    const isPreview = this.viewMode === 'preview';
+    btn.title = isPreview ? this.t('editMode') : this.t('previewMode');
+    btn.setAttribute('aria-pressed', isPreview ? 'true' : 'false');
+    btn.setAttribute('aria-label', btn.title);
+  }
+
   applyViewMode() {
     const container = document.querySelector('.editor-container');
     const editorPane = document.getElementById('editor-pane');
@@ -9531,8 +9686,10 @@ input[type="checkbox"]:checked::after { display: none !important; }
 
     container.classList.remove('preview-mode', 'preview-collapsed');
 
-    btnPreview.classList.toggle('active', this.viewMode === 'preview');
-    btnEdit.classList.toggle('active', this.viewMode === 'edit');
+    if (btnPreview) btnPreview.classList.toggle('active', this.viewMode === 'preview');
+    // 编辑按钮已从标题栏移除，保留容错（旧 DOM / 测试桩里可能仍存在）
+    if (btnEdit) btnEdit.classList.toggle('active', this.viewMode === 'edit');
+    this.updateViewToggleTitle();
 
     if (this.viewMode === 'preview') {
       container.classList.add('preview-mode');
@@ -10665,8 +10822,7 @@ input[type="checkbox"]:checked::after { display: none !important; }
           e.stopPropagation();
           this.settings.toolbarCollapsed = !this.settings.toolbarCollapsed;
           fmtToolbar.classList.toggle('collapsed', this.settings.toolbarCollapsed);
-          const lbl = fmtCollapse.querySelector('.fmt-toggle-label');
-          if (lbl) lbl.textContent = this.settings.toolbarCollapsed ? this.t('expandToolbar') : this.t('collapseToolbar');
+          fmtCollapse.title = this.settings.toolbarCollapsed ? this.t('expandToolbar') : this.t('collapseToolbar');
           this.saveSettings();
         });
       }

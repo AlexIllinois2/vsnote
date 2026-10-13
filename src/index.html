@@ -200,18 +200,6 @@
             </div>
           </div>
           <div class="dropdown">
-            <button id="btn-view" class="toolbar-btn" title="视图">
-              <span>视图</span>
-              <span class="dropdown-arrow">&#9662;</span>
-            </button>
-            <div class="dropdown-menu menu-list hidden" id="view-menu">
-              <div class="dropdown-item" id="btn-sidebar-toggle">
-                <span class="dropdown-check" id="sidebar-check"></span>
-                <span>侧边栏</span>
-              </div>
-            </div>
-          </div>
-          <div class="dropdown">
             <button id="btn-help" class="toolbar-btn" title="帮助">
               <span>帮助</span>
               <span class="dropdown-arrow">&#9662;</span>
@@ -234,24 +222,10 @@
             </div>
           </div>
         </div>
-        <div class="toolbar-center">
-          <div class="view-mode-tabs">
-            <button id="btn-view-preview" class="view-mode-tab active" title="预览模式">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-              <span>预览</span>
-            </button>
-            <button id="btn-view-edit" class="view-mode-tab" title="编辑模式">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
-              <span>编辑</span>
-            </button>
-          </div>
-        </div>
         <div class="toolbar-right">
-          <button id="btn-reload" class="toolbar-btn" title="重新加载文件">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="23 4 23 10 17 10"/>
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-            </svg>
+          <!-- 预览开关：纯图标 toggle，点击高亮（预览）/ 再点取消（编辑） -->
+          <button id="btn-view-preview" class="view-mode-tab" type="button" title="预览模式" aria-pressed="false" aria-label="预览模式">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
           <button id="btn-theme" class="toolbar-btn" title="切换主题">
             <svg class="icon" id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -260,6 +234,12 @@
               <path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/>
               <path d="M2 12h2"/><path d="M20 12h2"/>
               <path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>
+            </svg>
+          </button>
+          <button id="btn-reload" class="toolbar-btn" title="重新加载文件">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
             </svg>
           </button>
           <div class="window-controls">
@@ -340,7 +320,6 @@
         </div>
         <button class="fmt-btn fmt-collapse-toggle" id="fmt-collapse" title="折叠/展开工具栏">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-          <span class="fmt-toggle-label"></span>
           <svg class="icon fmt-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
       </div>
@@ -392,32 +371,29 @@
 
     <main class="editor-container">
       <div id="outline-sidebar" class="outline-sidebar">
-        <div class="sidebar-tabs">
-          <button class="sidebar-tab active" data-tab="files" id="tab-files" data-i18n="files"><span class="lbl">文件</span></button>
-          <button class="sidebar-tab" data-tab="outline" id="tab-outline" data-i18n="outline"><span class="lbl">大纲</span></button>
-          <button id="outline-close" class="outline-close-btn" title="关闭">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        <div class="folder-header" id="folder-header">
+          <span class="folder-path" id="folder-path"></span>
+          <button id="folder-locate" class="folder-locate-btn" type="button" title="定位到当前文件">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="4.5"/>
+              <line x1="12" y1="2" x2="12" y2="7.5"/>
+              <line x1="12" y1="16.5" x2="12" y2="22"/>
+              <line x1="2" y1="12" x2="7.5" y2="12"/>
+              <line x1="16.5" y1="12" x2="22" y2="12"/>
+            </svg>
+          </button>
+          <button id="btn-outline-toggle" class="outline-toggle-btn" type="button" title="大纲" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <line x1="5" y1="6" x2="19" y2="6"/>
+              <line x1="5" y1="12" x2="16" y2="12"/>
+              <line x1="5" y1="18" x2="12" y2="18"/>
+            </svg>
           </button>
         </div>
-        <div id="outline-content" class="outline-content sidebar-panel"></div>
-          <div id="folder-content" class="folder-content sidebar-panel hidden">
-            <div class="folder-header" id="folder-header">
-              <span class="folder-path" id="folder-path"></span>
-              <button id="folder-locate" class="folder-locate-btn" title="定位到当前文件">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="4.5"/>
-                  <line x1="12" y1="2" x2="12" y2="7.5"/>
-                  <line x1="12" y1="16.5" x2="12" y2="22"/>
-                  <line x1="2" y1="12" x2="7.5" y2="12"/>
-                  <line x1="16.5" y1="12" x2="22" y2="12"/>
-                </svg>
-              </button>
-              <button id="folder-close" class="folder-close-btn" title="关闭文件夹">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-            <div id="folder-tree" class="folder-tree"></div>
-          </div>
+        <div id="outline-content" class="outline-content sidebar-panel hidden"></div>
+        <div id="folder-content" class="folder-content sidebar-panel">
+          <div id="folder-tree" class="folder-tree"></div>
+        </div>
       </div>
       <div class="outline-resizer" id="outline-resizer"></div>
        <div class="editor-column">
@@ -460,7 +436,7 @@
     </main>
 
     <footer class="statusbar">
-      <span id="status-text">就绪</span>
+      <span id="status-text"></span>
       <div class="statusbar-right">
         <span id="word-count">字数: 0</span>
         <span id="char-count">字符: 0</span>

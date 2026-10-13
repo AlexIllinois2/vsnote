@@ -461,10 +461,8 @@ body {
   height: 100%;
 }
 
-.toolbar-left {
-  margin-right: auto;
-}
-
+/* 标题栏已无中间区（预览开关移入右侧）：右侧用 margin-left:auto 顶到最右，
+   左侧不能再有 margin-right:auto，否则两个 auto 会平分剩余空间把右侧推到中间。 */
 .toolbar-right {
   margin-left: auto;
 }
@@ -501,16 +499,6 @@ body {
 
 .app-sidebar-toggle.checked {
   color: var(--accent-color);
-}
-
-.toolbar-center {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  height: 100%;
 }
 
 .tab-bar-wrapper {
@@ -635,55 +623,43 @@ body {
   justify-content: center;
 }
 
-.view-mode-tabs {
-  display: flex;
-  background-color: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: 20px;
-  padding: 3px;
-  gap: 0;
-}
-
+/* 预览开关：纯图标，无胶囊背景/边框，点击切换高亮 */
 .view-mode-tab {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 1px 13px;
-  /* 透明边框占位：激活态只改 border-color，避免布局抖动 */
-  border: 1px solid transparent;
+  justify-content: center;
+  height: 24px;
+  min-height: 24px;
+  max-height: 24px;
+  padding: 0 5px;
+  border: none;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 12px;
-  transition: color, border-color 0.2s ease;
-  border-radius: 16px;
+  transition: color 0.2s ease;
+  border-radius: 4px;
+  align-self: center;
+  box-sizing: border-box;
   -webkit-app-region: no-drag;
 }
 
 .view-mode-tab .icon {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
 }
 
 .view-mode-tab:hover {
   color: var(--text-primary);
 }
 
-/* 激活态：前景高亮（icon + 文字 + 边框），不使用背景填充 */
+/* 激活态：仅图标高亮，不使用背景填充 */
 .view-mode-tab.active {
-  background-color: transparent;
   color: var(--accent-color);
-  border-color: var(--accent-color);
-  box-shadow: none;
 }
 
 .view-mode-tab.active:hover {
   color: var(--accent-color);
-  border-color: var(--accent-color);
-}
-
-.view-mode-tab + .view-mode-tab {
-  margin-left: 2px;
 }
 
 .toolbar-separator {
@@ -986,9 +962,6 @@ body {
 .format-toolbar:not(.collapsed) .fmt-chevron {
   transform: rotate(180deg);
 }
-.fmt-toggle-label {
-  display: none;
-}
 .format-toolbar.collapsed .fmt-collapse-toggle {
   position: absolute;
   right: 8px;
@@ -1002,9 +975,6 @@ body {
   border: 1px solid var(--border-color);
   border-radius: 5px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, .12);
-}
-.format-toolbar.collapsed .fmt-toggle-label {
-  display: inline;
 }
 
 .tab-bar {
@@ -1571,6 +1541,17 @@ body.is-resizing .side-btn {
   font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1.6;
+}
+
+/* Ctrl/⌘ 悬停在编辑区链接上：整块编辑区变手型。
+   CodeMirror 自带样式给 .CodeMirror-lines 写死了 cursor:text，必须一并覆盖，
+   否则只有行号栏和空白区变手、正文区仍是 I 形光标。 */
+#editor-wrapper .CodeMirror.cm-link-hover,
+#editor-wrapper .CodeMirror.cm-link-hover .CodeMirror-lines,
+#editor-wrapper .CodeMirror.cm-link-hover .CodeMirror-line,
+#editor-wrapper .CodeMirror.cm-link-hover .CodeMirror-line > span,
+#editor-wrapper .CodeMirror.cm-link-hover .CodeMirror-line > span > span {
+  cursor: pointer;
 }
 
 [data-theme="dark"] .cm-s-material-darker.CodeMirror {
@@ -2530,67 +2511,10 @@ body.is-resizing .side-btn {
   color: var(--text-primary);
 }
 
-.outline-close-btn {
-  width: 20px;
-  height: 20px;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  padding: 0;
-}
-
-.outline-close-btn svg {
-  width: 14px;
-  height: 14px;
-  display: block;
-}
-
-.outline-close-btn:hover {
-  background-color: var(--bg-secondary);
-  color: var(--text-primary);
-}
-
 .outline-content {
   flex: 1;
   overflow: auto;
   padding: 8px 0;
-}
-
-/* ====== Sidebar tabs (大纲 / 文件) ====== */
-.sidebar-tabs {
-  display: flex;
-  align-items: stretch;
-  background-color: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
-  flex-shrink: 0;
-}
-
-.sidebar-tab {
-  flex: 1;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 8px 6px;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
-}
-
-.sidebar-tab:hover {
-  color: var(--text-primary);
-  background-color: var(--bg-hover, rgba(128, 128, 128, 0.08));
-}
-
-.sidebar-tab.active {
-  color: var(--accent-color);
-  border-bottom-color: var(--accent-color);
 }
 
 .sidebar-panel {
@@ -2601,13 +2525,6 @@ body.is-resizing .side-btn {
 
 .sidebar-panel.hidden {
   display: none;
-}
-
-#outline-close.outline-close-btn {
-  flex: 0 0 auto;
-  width: 24px;
-  border-radius: 4px;
-  margin: 4px 4px 4px 0;
 }
 
 /* ====== 文件夹 / 文件树 ====== */
@@ -2621,13 +2538,10 @@ body.is-resizing .side-btn {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
   padding: 6px 8px;
   border-bottom: 1px solid var(--border-color);
   background-color: var(--bg-secondary);
-}
-
-.folder-header.hidden {
-  display: none;
 }
 
 .folder-path {
@@ -2640,7 +2554,11 @@ body.is-resizing .side-btn {
   word-break: break-all;
 }
 
-.folder-close-btn {
+.folder-locate-btn.hidden {
+  display: none;
+}
+
+.outline-toggle-btn {
   flex: 0 0 auto;
   width: 20px;
   height: 20px;
@@ -2655,15 +2573,21 @@ body.is-resizing .side-btn {
   padding: 0;
 }
 
-.folder-close-btn svg {
+.outline-toggle-btn svg {
   width: 14px;
   height: 14px;
   display: block;
 }
 
-.folder-close-btn:hover {
+.outline-toggle-btn:hover {
   background-color: var(--bg-hover, rgba(128, 128, 128, 0.08));
-  color: var(--text-primary);
+  color: var(--accent-color);
+}
+
+/* 大纲展开时按钮保持高亮，再点一次回到常态 */
+.outline-toggle-btn.active {
+  color: var(--accent-color);
+  background-color: var(--accent-muted);
 }
 
 .folder-locate-btn {
@@ -3991,12 +3915,6 @@ body.is-resizing .side-btn {
   .toolbar-btn span {
     display: none;
   }
-  .view-mode-tab span {
-    display: none;
-  }
-  .view-mode-tab {
-    padding: 4px 10px;
-  }
 }
 
 @media (max-width: 700px) {
@@ -4005,12 +3923,6 @@ body.is-resizing .side-btn {
   }
   .toolbar-btn {
     padding: 2px 6px;
-  }
-  .view-mode-tab span {
-    display: none;
-  }
-  .view-mode-tab {
-    padding: 4px 8px;
   }
   .dropdown-arrow {
     display: none;

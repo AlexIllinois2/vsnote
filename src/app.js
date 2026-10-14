@@ -6913,9 +6913,14 @@ class MarkdownEditor {
 
   // 完整同步：commit → pull(merge) → push。
   // silent=true 定时场景（只在有实质结果时提示）；manual=true 菜单手动触发（忽略暂停并解除暂停）。
+  // 自动触发（保存防抖 / 定时）受「Git 自动同步」开关控制；手动触发只要是 git 仓库就允许——
+  // 用户把自动同步设为「禁用」时，菜单里的手动同步 / 拉取仍然可用。
   // 返回后端结果对象；冲突时交给 _handleGitConflict 弹窗。
   async syncGit({ silent = false, manual = false } = {}) {
-    if (!this.gitAutoSyncEnabled() || this._gitSyncing || !this.workspaceFolder) return null;
+    const allowed = manual
+      ? (!!this._gitRepo && !!this.workspaceFolder)
+      : this.gitAutoSyncEnabled();
+    if (!allowed || this._gitSyncing) return null;
     // 用户放弃过一次远端合并：暂停自动同步，避免每次定时都撞同一处冲突
     if (this._gitPullPaused && !manual) return null;
     this._gitSyncing = true;
@@ -6942,7 +6947,9 @@ class MarkdownEditor {
       }
       return res;
     } catch (e) {
-      this.showToast(this.t('gitSyncFailed') + ': ' + e, 'danger');
+      // 定时同步（silent）失败只记 console：离线 / 凭据失效时不该每 5 分钟弹一次红条
+      if (silent) console.warn('[git-auto-sync]', e);
+      else this.showToast(this.t('gitSyncFailed') + ': ' + e, 'danger');
       return null;
     } finally {
       this._gitSyncing = false;
@@ -6950,9 +6957,13 @@ class MarkdownEditor {
   }
 
   // 只拉取（打开工作区 / 菜单手动触发）：脏工作区交给定时同步先提交再拉。
-  // 失败静默，不打断写作。
+  // 失败静默，不打断写作。启动时的自动拉取受「Git 自动同步」开关控制；手动拉取只要是
+  // git 仓库就允许（自动同步设为「禁用」时菜单仍可用）。
   async _runGitPull({ manual = false } = {}) {
-    if (!this.gitAutoSyncEnabled() || this._gitSyncing || !this.workspaceFolder) return null;
+    const allowed = manual
+      ? (!!this._gitRepo && !!this.workspaceFolder)
+      : this.gitAutoSyncEnabled();
+    if (!allowed || this._gitSyncing) return null;
     if (this._gitPullPaused && !manual) return null; // 用户放弃过合并，暂停自动拉取直到手动触发
     this._gitSyncing = true;
     try {

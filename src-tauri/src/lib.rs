@@ -1241,6 +1241,22 @@ fn git_ensure_conflict_markers(dir: &str, files: &[String]) -> Result<usize, Str
     Ok(ok)
 }
 
+// 冲突文件的工作区内容是否仍带 git 标准冲突标记（<<<<<<< ）。
+// 读不到 / 二进制（含 NUL）按「仍冲突」处理：二进制写不了标记，交给用户在弹窗里选
+// union/ours/theirs，避免静默把某一侧内容提交进合并。
+fn file_has_conflict_markers(dir: &str, file: &str) -> bool {
+    let p = std::path::Path::new(dir).join(file);
+    match std::fs::read(&p) {
+        Ok(bytes) => {
+            if bytes.iter().any(|&b| b == 0) {
+                return true;
+            }
+            String::from_utf8_lossy(&bytes).contains("<<<<<<< ")
+        }
+        Err(_) => true,
+    }
+}
+
 // 按策略解决一批冲突文件（解决后逐个 add，但不提交，交由调用方完成合并提交）
 fn git_auto_resolve(dir: &str, strategy: &str, files: &[String]) -> Result<bool, String> {
     for f in files {
@@ -1396,17 +1412,54 @@ async fn git_auto_sync(path: String, message: String, strategy: String) -> Resul
         if rebasing {
             let _ = run_git(&path, &["rebase", "--abort"]);
         }
-        // 已存在未解决冲突：不再叠加操作，直接上报让 UI 提示用户
+        // 已存在未解决冲突时的处理：
+        //   - 合并进行中，且用户已在编辑器里把冲突标记改掉（文件不再含 <<<<<<<）→ 视为已解决：
+        //     暂存这些文件并补一次合并提交，随后继续正常的 ❶❸ 流程（拉取 / 推送）；
+        //   - 只解决了一部分：先把已改好的暂存（避免被弹窗里的 union/ours/theirs 覆盖），
+        //     只把还带标记的上报 UI；
+        //   - 仍全带标记 / 二进制（写不了标记）/ 非合并态的残留冲突 → 不叠加操作，
+        //     上报 UI 让用户选保留方式（union/ours/theirs）或继续手改。
+        // 只凭 git status 的 U 状态码判断是不够的：用户改的是工作区文件、没有 git add，
+        // 索引里会一直是 UU，必须再看文件内容里标记是否已被删掉。
         let pending = git_conflicts(&path)?;
-        if !pending.is_empty() {
-            return Ok(serde_json::json!({
-                "conflict": true, "conflicts": pending, "stage": "unresolved",
-                "committed": false, "pulled": false, "pushed": false, "resolved": false
-            }));
-        }
-        // 合并中但冲突已解决（用户在外部编辑器改完）→ 补一次合并提交
         let mut finished_merge = false;
-        if merging {
+        if !pending.is_empty() {
+            let mut resolved_by_user: Vec<String> = Vec::new();
+            let mut still_marked: Vec<String> = Vec::new();
+            for f in &pending {
+                if file_has_conflict_markers(&path, f) {
+                    still_marked.push(f.clone());
+                } else {
+                    resolved_by_user.push(f.clone());
+                }
+            }
+            if merging && !still_marked.is_empty() && !resolved_by_user.is_empty() {
+                // 部分解决：暂存已改好的，只上报还带标记的，等用户把剩下的也改完
+                for f in &resolved_by_user {
+                    let _ = run_git(&path, &["add", "--", f]);
+                }
+                return Ok(serde_json::json!({
+                    "conflict": true, "conflicts": still_marked, "stage": "unresolved",
+                    "committed": false, "pulled": false, "pushed": false, "resolved": false
+                }));
+            }
+            if merging && still_marked.is_empty() && !resolved_by_user.is_empty() {
+                for f in &resolved_by_user {
+                    let a = run_git(&path, &["add", "--", f])?;
+                    if !a.status.success() {
+                        return Err(format!("git add 失败: {}（解决冲突后暂存失败）", git_text(&a)));
+                    }
+                }
+                let c = run_git(&path, &["commit", "--no-edit"])?;
+                finished_merge = c.status.success();
+            } else {
+                return Ok(serde_json::json!({
+                    "conflict": true, "conflicts": pending, "stage": "unresolved",
+                    "committed": false, "pulled": false, "pushed": false, "resolved": false
+                }));
+            }
+        } else if merging {
+            // 索引里已无冲突条目（用户可能已在外部 git add 过）→ 直接补合并提交
             let c = run_git(&path, &["commit", "--no-edit"])?;
             finished_merge = c.status.success();
         }

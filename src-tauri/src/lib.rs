@@ -1257,6 +1257,88 @@ fn file_has_conflict_markers(dir: &str, file: &str) -> bool {
     }
 }
 
+// 合并现场中「已无冲突标记」的文件，是真解决还是假解决。
+// 假解决 = 用户没看到标记就直接保存：自动保存 / Ctrl+S 会把合并前的编辑器缓冲区
+// 原样写回，文件同样不含 <<<<<<<，但远端（:3 stage）那一侧的改动并没有被吸纳。
+// 旧逻辑仅凭「无标记」就补合并提交，远端改动会被静默丢弃——用户视角就是
+// 「删除某行后重启，相邻的第一行/第三行丢一半」。
+// 判定：取三阶段 :1(base) :2(ours) :3(theirs)，把当前工作区内容当 ours 与
+// theirs 再合并一次（git merge-file）。退出码 > 0 表示仍冲突 → 未真正解决。
+// 拿不到阶段内容 / 二进制 / merge-file 异常时返回 true（保持旧行为，交人工判断）。
+fn conflict_resolution_is_genuine(dir: &str, file: &str) -> Result<bool, String> {
+    let show = |stage: u8| -> Option<Vec<u8>> {
+        let o = run_git(dir, &["show", &format!(":{stage}:{file}")]).ok()?;
+        if o.status.success() { Some(o.stdout) } else { None }
+    };
+    let (ours, theirs) = match (show(2), show(3)) {
+        (Some(a), Some(b)) => (a, b),
+        _ => return Ok(true),
+    };
+    // 二进制（含 NUL）不按文本合并判定，走弹窗人工选择
+    if ours.iter().any(|&b| b == 0) || theirs.iter().any(|&b| b == 0) {
+        return Ok(true);
+    }
+    let working = match std::fs::read(std::path::Path::new(dir).join(file)) {
+        Ok(b) => b,
+        Err(_) => return Ok(true),
+    };
+    if working.iter().any(|&b| b == 0) {
+        return Ok(true);
+    }
+    let base = show(1).unwrap_or_default();
+    let tmp = std::env::temp_dir().join(format!(
+        "vsnote-git-check-{}-{}",
+        std::process::id(),
+        file.replace(&['/', '\\', ':'][..], "_")
+    ));
+    if std::fs::create_dir_all(&tmp).is_err() {
+        return Ok(true);
+    }
+    let p_working = tmp.join("working");
+    let p_base = tmp.join("base");
+    let p_theirs = tmp.join("theirs");
+    let prepared = std::fs::write(&p_working, &working).is_ok()
+        && std::fs::write(&p_base, &base).is_ok()
+        && std::fs::write(&p_theirs, &theirs).is_ok();
+    let genuine = if !prepared {
+        true
+    } else {
+        match std::process::Command::new("git")
+            .args(["merge-file", "-p"])
+            .arg(&p_working)
+            .arg(&p_base)
+            .arg(&p_theirs)
+            .current_dir(dir)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .output()
+        {
+            // 退出码 = 冲突数（>0 表示仍有冲突）；<=0（含 255 错误）按信任处理
+            Ok(out) => out.status.code().map(|c| c <= 0).unwrap_or(true),
+            Err(_) => true,
+        }
+    };
+    let _ = std::fs::remove_dir_all(&tmp);
+    Ok(genuine)
+}
+
+// 假解决时还原冲突标记，让用户在编辑器里看到真实冲突（合并现场不动）。
+// 仅还原 LF 纯净（vsnote 自己保存格式）的文件：含 CR 的多是外部工具改过的，
+// 直接还原会覆盖别人的解决成果，只上报不动作。
+fn restore_conflict_markers_for_fake(dir: &str, files: &[String]) {
+    let restorable: Vec<String> = files
+        .iter()
+        .filter(|f| {
+            std::fs::read(std::path::Path::new(dir).join(f))
+                .map(|b| !b.iter().any(|&c| c == b'\r'))
+                .unwrap_or(false)
+        })
+        .cloned()
+        .collect();
+    if !restorable.is_empty() {
+        let _ = git_ensure_conflict_markers(dir, &restorable);
+    }
+}
+
 // 按策略解决一批冲突文件（解决后逐个 add，但不提交，交由调用方完成合并提交）
 fn git_auto_resolve(dir: &str, strategy: &str, files: &[String]) -> Result<bool, String> {
     for f in files {
@@ -1413,14 +1495,20 @@ async fn git_auto_sync(path: String, message: String, strategy: String) -> Resul
             let _ = run_git(&path, &["rebase", "--abort"]);
         }
         // 已存在未解决冲突时的处理：
-        //   - 合并进行中，且用户已在编辑器里把冲突标记改掉（文件不再含 <<<<<<<）→ 视为已解决：
-        //     暂存这些文件并补一次合并提交，随后继续正常的 ❶❸ 流程（拉取 / 推送）；
+        //   - 合并进行中，且用户真解决了（文件无 <<<<<<<，且用三阶段重放验证过：
+        //     工作区内容与 :3(theirs) 再合并一次不再冲突）→ 暂存并补合并提交，
+        //     随后继续正常的 ❶❸ 流程（拉取 / 推送）；
+        //   - 假解决（文件无标记，但并未吸纳 theirs 的改动——典型是用户没看到标记、
+        //     自动保存/Ctrl+S 把合并前的编辑器缓冲区写回）→ 还原冲突标记后重新上报，
+        //     绝不静默补合并提交（否则远端改动被丢：重启后冲突行邻近的行丢一半）；
         //   - 只解决了一部分：先把已改好的暂存（避免被弹窗里的 union/ours/theirs 覆盖），
         //     只把还带标记的上报 UI；
         //   - 仍全带标记 / 二进制（写不了标记）/ 非合并态的残留冲突 → 不叠加操作，
         //     上报 UI 让用户选保留方式（union/ours/theirs）或继续手改。
         // 只凭 git status 的 U 状态码判断是不够的：用户改的是工作区文件、没有 git add，
-        // 索引里会一直是 UU，必须再看文件内容里标记是否已被删掉。
+        // 索引里会一直是 UU，必须再看文件内容里标记是否已被删掉；而「标记被删掉」本身
+        // 也不够——直接保存同样无标记，所以再加一层三阶段重放验证（见
+        // conflict_resolution_is_genuine）。
         let pending = git_conflicts(&path)?;
         let mut finished_merge = false;
         if !pending.is_empty() {
@@ -1433,25 +1521,58 @@ async fn git_auto_sync(path: String, message: String, strategy: String) -> Resul
                     resolved_by_user.push(f.clone());
                 }
             }
-            if merging && !still_marked.is_empty() && !resolved_by_user.is_empty() {
-                // 部分解决：暂存已改好的，只上报还带标记的，等用户把剩下的也改完
+            if merging {
+                // 无标记 ≠ 已解决：自动保存 / Ctrl+S 会把合并前的编辑器缓冲区原样写回，
+                // 文件同样不含 <<<<<<<，但远端那一侧改动并未被吸纳。逐个用三阶段重放验证，
+                // 假解决绝不静默补合并提交——否则远端改动被静默丢弃，用户视角就是
+                // 「删了某行当时看着没事，重启后相邻的第一行/第三行丢一半」。
+                let mut genuine: Vec<String> = Vec::new();
+                let mut fake: Vec<String> = Vec::new();
                 for f in &resolved_by_user {
-                    let _ = run_git(&path, &["add", "--", f]);
-                }
-                return Ok(serde_json::json!({
-                    "conflict": true, "conflicts": still_marked, "stage": "unresolved",
-                    "committed": false, "pulled": false, "pushed": false, "resolved": false
-                }));
-            }
-            if merging && still_marked.is_empty() && !resolved_by_user.is_empty() {
-                for f in &resolved_by_user {
-                    let a = run_git(&path, &["add", "--", f])?;
-                    if !a.status.success() {
-                        return Err(format!("git add 失败: {}（解决冲突后暂存失败）", git_text(&a)));
+                    if conflict_resolution_is_genuine(&path, f)? {
+                        genuine.push(f.clone());
+                    } else {
+                        fake.push(f.clone());
                     }
                 }
-                let c = run_git(&path, &["commit", "--no-edit"])?;
-                finished_merge = c.status.success();
+                if !fake.is_empty() {
+                    // 假解决：还原冲突标记（仅 LF 纯净文件），让用户在编辑器里看到
+                    // 真实冲突后真正解决；合并现场（MERGE_HEAD）不动，稍后重新上报
+                    restore_conflict_markers_for_fake(&path, &fake);
+                    let mut report = still_marked.clone();
+                    report.extend(fake.iter().cloned());
+                    return Ok(serde_json::json!({
+                        "conflict": true, "conflicts": report, "stage": "unresolved",
+                        "committed": false, "pulled": false, "pushed": false, "resolved": false,
+                        "fakeResolved": fake
+                    }));
+                }
+                if genuine.is_empty() {
+                    // 全部仍带标记，没有可暂存的已解决文件
+                    return Ok(serde_json::json!({
+                        "conflict": true, "conflicts": pending, "stage": "unresolved",
+                        "committed": false, "pulled": false, "pushed": false, "resolved": false
+                    }));
+                }
+                if still_marked.is_empty() {
+                    for f in &genuine {
+                        let a = run_git(&path, &["add", "--", f])?;
+                        if !a.status.success() {
+                            return Err(format!("git add 失败: {}（解决冲突后暂存失败）", git_text(&a)));
+                        }
+                    }
+                    let c = run_git(&path, &["commit", "--no-edit"])?;
+                    finished_merge = c.status.success();
+                } else {
+                    // 部分解决：暂存已改好的，只上报还带标记的，等用户把剩下的也改完
+                    for f in &genuine {
+                        let _ = run_git(&path, &["add", "--", f]);
+                    }
+                    return Ok(serde_json::json!({
+                        "conflict": true, "conflicts": still_marked, "stage": "unresolved",
+                        "committed": false, "pulled": false, "pushed": false, "resolved": false
+                    }));
+                }
             } else {
                 return Ok(serde_json::json!({
                     "conflict": true, "conflicts": pending, "stage": "unresolved",

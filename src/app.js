@@ -480,6 +480,7 @@ const I18N = {
     gitConflictAborted: '已放弃本次远端合并，本地提交保留',
     gitConflictPrevUnresolved: '（上次冲突还没解决，本地提交已保留。）',
     gitConflictMarkerHint: '文件里已写入 git 冲突标记（<<<<<<< HEAD / ======= / >>>>>>> 远端），文件名不变。在编辑器里删掉标记、改成你想要的内容后保存，下次同步会自动完成合并提交并推送。',
+    gitConflictFakeResolved: '检测到有冲突文件被直接保存过（没有真正合并远端改动，很可能是没看到标记就继续编辑并保存了）。冲突标记已还原，请点击顶部横幅的『重新加载』后查看标记并解决，或直接在下方选择保留方式。',
     gitConflictOpenEditor: '打开冲突文件',
     gitConflictOpenedHint: '已在编辑器打开冲突文件，改好后保存即可自动完成合并',
     gitConflictPausedHint: '已暂停自动拉取，处理完冲突后用菜单「Git 同步」恢复',
@@ -904,6 +905,7 @@ const I18N = {
     gitConflictAborted: 'Remote merge aborted; local commits kept',
     gitConflictPrevUnresolved: '(The previous conflict is still unresolved; local commits are kept.)',
     gitConflictMarkerHint: 'Conflict markers (<<<<<<< HEAD / ======= / >>>>>>> remote) have been written into the files, with the filenames unchanged. Remove the markers, keep the content you want, and save — the next sync commits the merge and pushes automatically.',
+    gitConflictFakeResolved: 'A conflicted file was saved without a real merge (the remote changes were not incorporated — most likely the file was edited and saved without seeing the markers). The conflict markers have been restored: click "Reload" in the banner at the top to see and resolve them, or choose what to keep below.',
     gitConflictOpenEditor: 'Open conflicted files',
     gitConflictOpenedHint: 'Conflicted files opened in the editor — edit and save to finish the merge',
     gitConflictPausedHint: 'Auto pull paused — use the menu item "Git Sync" after resolving the conflict',
@@ -6877,6 +6879,7 @@ class MarkdownEditor {
     try {
       const st = await invoke('git_status', { path: this.workspaceFolder });
       if (st && st.conflicts && st.conflicts.length) {
+        this._enqueueExternalChangeForGitConflicts(st.conflicts);
         await this._handleGitConflict(st.conflicts, 'unresolved');
       }
     } catch (e) {
@@ -6932,7 +6935,9 @@ class MarkdownEditor {
       });
       if (res && res.conflict) {
         this._scheduleTreeRefresh(); // 冲突标记已写入文件，先让树反映出来
-        await this._handleGitConflict(res.conflicts, res.stage);
+        // 冲突文件若已打开：入队外部变更，让用户重载后看得到标记并真正解决
+        this._enqueueExternalChangeForGitConflicts(res.conflicts);
+        await this._handleGitConflict(res.conflicts, res.stage, !!res.fakeResolved);
         return res;
       }
       if (res && (res.pulled || res.resolved)) this._scheduleTreeRefresh();
@@ -6973,6 +6978,7 @@ class MarkdownEditor {
       });
       if (res && res.conflict) {
         this._scheduleTreeRefresh();
+        this._enqueueExternalChangeForGitConflicts(res.conflicts);
         await this._handleGitConflict(res.conflicts, 'merge');
         return res;
       }
@@ -6993,7 +6999,9 @@ class MarkdownEditor {
 
   // 冲突提示：列出冲突文件，让用户选保留方式 / 打开文件夹自行编辑 / 放弃本次合并。
   // 返回 'resolved' | 'aborted' | 'manual' | null（关闭对话框）。
-  async _handleGitConflict(conflicts, stage) {
+  // fakeResolved=true：检测到冲突文件被直接保存过（未真正合并远端改动），标记已还原，
+  // 文案引导用户先重载再看标记，或直接选保留方式。
+  async _handleGitConflict(conflicts, stage, fakeResolved = false) {
     const files = Array.isArray(conflicts) ? conflicts : [];
     const dialog = document.getElementById('git-conflict-dialog');
     const msgEl = document.getElementById('git-conflict-message');
@@ -7011,7 +7019,8 @@ class MarkdownEditor {
     msgEl.textContent = (stage === 'unresolved'
       ? this.t('gitConflictMsg') + ' ' + this.t('gitConflictPrevUnresolved')
       : this.t('gitConflictMsg'))
-      + (useMarkers ? '\n' + this.t('gitConflictMarkerHint') : '');
+      + (useMarkers ? '\n' + this.t('gitConflictMarkerHint') : '')
+      + (fakeResolved ? '\n' + this.t('gitConflictFakeResolved') : '');
     // 路径一律按纯文本渲染（防路径注入 XSS）
     listEl.textContent = '';
     for (const f of files) {
@@ -7080,12 +7089,20 @@ class MarkdownEditor {
       onOpen = async () => {
         // 直接在 vsnote 里打开冲突文件（文件名保持原样，内容已是 git 冲突标记），
         // 用户改好后保存 → _noteFsChanged → 下次同步自动补上合并提交并推送。
-        const absPaths = files.map((f) => (/^[a-zA-Z]:[\\/]|^\\\\|^\//.test(f)
-          ? f
-          : this.workspaceFolder.replace(/[\\/]+$/, '') + '/' + f));
+        const absPaths = files.map((f) => this._absWorkspacePath(f));
         finish('manual');
         for (const p of absPaths.slice(0, 8)) {
-          await this.openFilePath(p);
+          const idx = this.tabs.findIndex(t => t.filePath && this._samePath(t.filePath, p));
+          if (idx !== -1) {
+            // 已打开的标签页：switchTab 只会显示内存里的旧内容（没有标记），
+            // 必须重载磁盘上的冲突标记版才看得见；有未保存改动时不强灌，
+            // 只切过去并显示外部变更横幅，由用户自己决定是否重载。
+            await this.switchTab(idx);
+            const tab = this.tabs[idx];
+            if (tab && !tab.isModified) await this.reloadTabFromDisk(tab);
+          } else {
+            await this.openFilePath(p);
+          }
         }
         this.showToast(this.t('gitConflictOpenedHint'), 'success');
       };
@@ -9441,6 +9458,10 @@ input[type="checkbox"]:checked::after { display: none !important; }
       tab.savedContent = content;
       await this.refreshFileMeta(tab);
       tab.pendingExternalChange = false;
+      // 同步清掉队列残留：否则 enqueueExternalChange 的 includes 检查会永久短路，
+      // 该标签之后的外部变更再也不上报（静默丢失后续外部改动的通知）
+      const qi = this._externalQueue.indexOf(tab);
+      if (qi !== -1) this._externalQueue.splice(qi, 1);
       if (tab === this.activeTab) {
         this.cm.setValue(content);
         this.updatePreview();
@@ -9460,6 +9481,36 @@ input[type="checkbox"]:checked::after { display: none !important; }
     this._externalQueue.push(tab);
     this.updateTabDisplay();
     this.updateExternalChangeBanner();
+  }
+
+  // 仓库相对路径 → 工作区绝对路径（git status / 冲突列表输出的是相对路径）
+  _absWorkspacePath(rel) {
+    if (/^[a-zA-Z]:[\\/]|^\\\\|^\//.test(rel)) return rel;
+    return this.workspaceFolder.replace(/[\\/]+$/, '') + '/' + rel;
+  }
+
+  // 路径等价比较（分隔符归一化；Windows 大小写不敏感）
+  _samePath(a, b) {
+    if (!a || !b) return false;
+    const isWin = /Win/i.test(navigator.platform || navigator.userAgent || '');
+    const norm = (p) => {
+      const s = String(p).replace(/\\/g, '/');
+      return isWin ? s.toLowerCase() : s;
+    };
+    return norm(a) === norm(b);
+  }
+
+  // git 冲突文件列表 → 已打开标签页入队外部变更。
+  // git（pull 或假解决还原）刚把冲突标记写进磁盘，编辑器里还是旧内容：必须让用户
+  // 看到「重新加载」横幅，重载后才看得到标记并真正解决；pendingExternalChange
+  // 同时会挡住 autoSave 在用户处理前再次覆盖磁盘上的标记版。
+  _enqueueExternalChangeForGitConflicts(conflicts) {
+    if (!Array.isArray(conflicts) || !conflicts.length || !this.workspaceFolder) return;
+    for (const rel of conflicts) {
+      const abs = this._absWorkspacePath(rel);
+      const tab = this.tabs.find(t => t.filePath && this._samePath(t.filePath, abs));
+      if (tab && !tab.pendingExternalChange) this.enqueueExternalChange(tab);
+    }
   }
 
   // 提示条始终反映当前激活标签页的外部变更

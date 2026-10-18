@@ -438,6 +438,7 @@
     <footer class="statusbar">
       <span id="status-text"></span>
       <div class="statusbar-right">
+        <span id="doc-kind" class="doc-kind hidden"></span>
         <span id="word-count">字数: 0</span>
         <span id="char-count">字符: 0</span>
         <span id="line-count">行数: 0</span>
@@ -1066,6 +1067,14 @@
               <option value="edit" selected>编辑</option>
             </select>
           </div>
+          <div class="settings-row settings-row-stacked">
+            <label>纯文本模式</label>
+            <label class="toggle"><input type="checkbox" id="set-plain-text-mode" checked><span class="toggle-slider"></span></label>
+            <p class="form-hint" id="setting-plain-text-mode-hint">
+              <svg class="hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              <span class="hint-text">txt / log 等非 Markdown 文件按纯文本打开：不做 Markdown 语法着色与预览排版，Enter 不续写列表和表格，格式工具栏收起，保存时保留文件原有换行符（CRLF / LF）。关闭后所有文件一律按 Markdown 处理。</span>
+            </p>
+          </div>
           <div class="settings-row">
             <label>Git 自动同步</label>
             <select id="set-git-autosync">
@@ -1325,6 +1334,7 @@
 <script src="modules/file-search.js"></script>
 <script src="modules/global-search.js"></script>
 <script src="modules/preview-window.js"></script>
+<script src="modules/text-doc.js"></script>
 <script src="modules/tauri-api.js"></script>
 <script src="modules/image-processor.js"></script>
 <script src="controllers/preview-controller.js"></script>

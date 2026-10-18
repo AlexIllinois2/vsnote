@@ -26,6 +26,8 @@ const { JSDOM } = require('jsdom');
 const appjs = fs.readFileSync(path.join(__dirname, '..', 'src', 'app.js'), 'utf8');
 const tauriApiSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'modules', 'tauri-api.js'), 'utf8');
 const previewControllerSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'controllers', 'preview-controller.js'), 'utf8');
+// app.js 的文档类型判定与换行归一化依赖 window.TextDoc（同样按 index.html 顺序先注入）
+const textDocSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'modules', 'text-doc.js'), 'utf8');
 
 const HTML = `<!DOCTYPE html><html><body>
   <div class="editor-container">
@@ -161,7 +163,7 @@ const harnessFn = function () {
   return results;
 };
 
-const combined = tauriApiSrc + '\n;\n' + previewControllerSrc + '\n;\n' + appjs +
+const combined = tauriApiSrc + '\n;\n' + textDocSrc + '\n;\n' + previewControllerSrc + '\n;\n' + appjs +
   '\n;window.__harnessPromise = (' + harnessFn.toString() + ')();';
 const s = dom.window.document.createElement('script');
 s.textContent = combined;

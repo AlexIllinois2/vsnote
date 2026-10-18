@@ -30,6 +30,7 @@ const KNOWN_GLOBALS = new Set([
   'PreviewWindow',
   'TauriApi',
   'ImageProcessor', // P1-1 新增：processImages 抽离为纯模块
+  'TextDoc',        // 纯文本（txt/log）判定与渲染
 ]);
 
 // 不锚行首：\bwindow\.[A-Z][A-Za-z]*\s*=

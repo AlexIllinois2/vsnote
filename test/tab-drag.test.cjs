@@ -13,6 +13,8 @@ const appjs = fs.readFileSync(path.join(__dirname, '..', 'src', 'app.js'), 'utf8
 const tauriApiSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'modules', 'tauri-api.js'), 'utf8');
 // P2-1：app.js 构造期 new PreviewController(this) 需要本 facade 先注入（同生产 index.html 顺序）。
 const previewControllerSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'controllers', 'preview-controller.js'), 'utf8');
+// app.js 的文档类型判定与换行归一化依赖 window.TextDoc（同样按 index.html 顺序先注入）
+const textDocSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'modules', 'text-doc.js'), 'utf8');
 
 const HTML = `<!DOCTYPE html><html><body></body></html>`;
 const dom = new JSDOM(HTML, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'http://localhost/' });
@@ -142,7 +144,7 @@ const harnessFn = function () {
   return results;
 };
 
-const combined = tauriApiSrc + '\n;\n' + previewControllerSrc + '\n;\n' + appjs + '\n;window.__harnessPromise = (' + harnessFn.toString() + ')();';
+const combined = tauriApiSrc + '\n;\n' + textDocSrc + '\n;\n' + previewControllerSrc + '\n;\n' + appjs + '\n;window.__harnessPromise = (' + harnessFn.toString() + ')();';
 const s = dom.window.document.createElement('script');
 s.textContent = combined;
 dom.window.document.body.appendChild(s);

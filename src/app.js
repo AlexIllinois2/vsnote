@@ -13,6 +13,20 @@ const HEAD_RENDER_CHAR_CAP = 1.5 * 1024 * 1024;
 const PREVIEW_WINDOW_LINES = 1200;  // 窗口源码行数上限
 const PREVIEW_WINDOW_LEAD = 200;    // 焦点行前预留行数（让焦点不至于贴顶）
 
+// 大文档「惰性回写」阈值：超过这个字符数后，每次按键不再 cm.getValue() 复制整篇文本
+// （CM5 的 getValue 会把所有行拼成新字符串，几 MB 文档上每次按键都拷一遍足够卡顿），
+// 改为打脏标记，在实际要写盘 / 切标签 / 存会话时再取值。
+const LAZY_CONTENT_CHARS = 256 * 1024;
+// 大文档预览/统计的停顿去抖：小文档沿用 300ms，超过 LAZY_CONTENT_CHARS 放宽到 600ms，
+// 让连续输入期间尽量少触发整篇取值 + 渲染
+const BIG_PREVIEW_DEBOUNCE_MS = 600;
+// 字数统计是整篇正则扫描；超大文本按 1.5s 节流，切换/保存等显式调用不受限
+const HEAVY_WORDCOUNT_CHARS = 1024 * 1024;
+const HEAVY_WORDCOUNT_THROTTLE_MS = 1500;
+// 超长单行判定：自动换行会把一行拆成成千上万个可视行（换行测量与滚动条高度都按可视行算），
+// 导出的 JSON、含 base64 的日志因此能一次卡住几秒 —— 这类文档横向滚动更可用。
+const HUGE_LINE_RE = /[^\n]{2000,}/;
+
 // 自动更新开关。
 // vsnote 已不再从上游 TizuMark 的 release 拉取更新（原 endpoints 指向
 // tizuio/TizuMark 与 gitee tizu/tizu-mark），改为自己的发布渠道。
@@ -43,10 +57,15 @@ class Tab {
     this._loaded = true;
     this.previewScrollTop = 0;
     this.fontSize = null; // 每标签独立缩放字号；null=未初始化，切换时按 settings.fontSize 初始化
+    // 读入时的换行风格（'\n' / '\r\n'）：纯文本文件保存时据此还原，见 TextDoc.applyEol
+    this.eol = '\n';
+    // 大文档惰性回写标记：true = this.content 落后于编辑器缓冲区，取值前先 syncContent
+    this._contentDirty = false;
   }
 
   get isModified() {
-    return this.content !== this.savedContent;
+    // 脏标记短路：大文档下 content 可能尚未回写，但「有过编辑」这件事本身已足够判定
+    return this._contentDirty || this.content !== this.savedContent;
   }
 }
 
@@ -224,6 +243,11 @@ const I18N = {
     schemeDusk: '暮紫风',
     schemeSunset: '暖橙风',
     defaultView: '默认视图',
+    plainTextMode: '纯文本模式',
+    plainTextModeHint: 'txt / log 等非 Markdown 文件按纯文本打开：不做 Markdown 语法着色与预览排版，Enter 不续写列表和表格，格式工具栏收起，保存时保留文件原有换行符（CRLF / LF）。关闭后所有文件一律按 Markdown 处理。',
+    docKindText: '纯文本',
+    docKindCode: '代码',
+    docKindNoWrap: '超长行横向滚动',
     scrollSync: '滚动同步',
     softBreaks: '软换行（回车即换行）',
     softBreaksHint: '开启后，段落内单个回车直接换行（与「空格+空格+回车」一致），更符合日常写作习惯，也便于从其他笔记软件迁移。关闭则恢复 CommonMark 标准（回车视为空格）。',
@@ -648,6 +672,11 @@ const I18N = {
     schemeDusk: 'Dusk',
     schemeSunset: 'Sunset',
     defaultView: 'Default View',
+    plainTextMode: 'Plain Text Mode',
+    plainTextModeHint: 'Open .txt / .log and other non-Markdown files as plain text: no Markdown highlighting or reflowed preview, no list/table continuation on Enter, the format toolbar is hidden, and saving keeps the file\u2019s original line endings (CRLF / LF). Turn this off to treat every file as Markdown.',
+    docKindText: 'Plain text',
+    docKindCode: 'Code',
+    docKindNoWrap: 'long line, scrolls horizontally',
     scrollSync: 'Scroll Sync',
     softBreaks: 'Soft Line Break (Enter = newline)',
     softBreaksHint: 'When enabled, a single Enter inside a paragraph creates a line break (same as "two spaces + Enter"), matching everyday writing and easing migration from other note apps. When disabled, CommonMark standard applies (Enter is treated as a space).',
@@ -981,6 +1010,10 @@ class MarkdownEditor {
 
     this.settings = this.loadSettings();
     this.viewMode = this.settings.defaultView || 'edit';
+    // 纯文本模式状态：_plainTextActive = 当前标签是否按纯文本处理，_docModeTab = 上次施加姿态的标签
+    this._plainTextActive = false;
+    this._docModeTab = null;
+    this._lastWordCountAt = 0;
     this.shortcuts = this.loadShortcuts();
     this.shortcutScheme = this.loadShortcutScheme();
     this._recentFiles = [];
@@ -1217,6 +1250,9 @@ class MarkdownEditor {
     setRowLabel('set-max-width', t('maxWidth'));
     setSectionTitle('set-default-view', t('behavior'));
     setRowLabel('set-default-view', t('defaultView'));
+    setRowLabel('set-plain-text-mode', t('plainTextMode'));
+    const plainTextHint = document.querySelector('#setting-plain-text-mode-hint .hint-text');
+    if (plainTextHint) plainTextHint.textContent = t('plainTextModeHint');
     setRowLabel('set-git-autosync', t('gitAutoSync'));
     setRowLabel('set-git-conflict', t('gitConflictStrategy'));
     this._applyGitConflictOptionLabels();
@@ -1570,6 +1606,7 @@ class MarkdownEditor {
       gitAutoSyncMinutes: 5,
       gitConflictStrategy: 'markers',
       autoSave: 0,
+      plainTextMode: true,
     };
   }
 
@@ -1601,8 +1638,10 @@ class MarkdownEditor {
     }
   }
 
-  // 读取文件并归一化换行符为 \n：处理 CRLF 与单独 CR（混合/老 Mac 换行），避免保存时把单 CR 当作换行制造多余空行
-  async readFileNormalized(path) {
+  // 读取文件：返回 { content, eol }。content 归一化为 \n（处理 CRLF 与单独 CR，混合/老 Mac 换行），
+  // 编辑器与 Markdown 管线统一按 \n 工作；eol 记录原文件换行风格，纯文本保存时据此还原，
+  // 否则编辑一次就把记事本/日志文件整篇悄悄改成 LF。
+  async readFileWithMeta(path) {
     let raw;
     try {
       raw = await invoke('read_file', { path });
@@ -1616,7 +1655,127 @@ class MarkdownEditor {
       err.path = path;
       throw err;
     }
-    return raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    return { content: TextDoc.normalizeNewlines(raw), eol: TextDoc.detectEol(raw) };
+  }
+
+  async readFileNormalized(path) {
+    return (await this.readFileWithMeta(path)).content;
+  }
+
+  // ===== 纯文本（非 Markdown）文档模式 =====
+  // 无 filePath 的新建草稿仍是 Markdown（本应用的主用途）；设置关闭 plainTextMode 时
+  // 一切退回旧行为（所有文件按 Markdown 处理）。
+  _isPlainTextTab(tab) {
+    if (!tab || !tab.filePath) return false;
+    if (!this.settings.plainTextMode) return false;
+    return !TextDoc.isMarkdownPath(tab.filePath);
+  }
+
+  // 大文档判定：以最近一次同步的文本长度为准（该长度正是 getValue 的代价来源）。
+  // 惰性模式下 content 略滞后，用作阈值判断足够。
+  _isBigDoc(tab) {
+    const t = tab || this.activeTab;
+    if (!t) return false;
+    return (t.content || '').length > LAZY_CONTENT_CHARS;
+  }
+
+  // 大文档惰性回写的兑现点：只有真正需要整篇文本时才 getValue（保存、切换、会话、预览）。
+  syncContent(tab) {
+    const target = tab || this.activeTab;
+    if (!target) return '';
+    if (target === this.activeTab && target._contentDirty) {
+      target.content = this.cm.getValue();
+      target._contentDirty = false;
+    }
+    return target.content || '';
+  }
+
+  // 写盘用文本：先补齐惰性回写，再按原换行风格还原（仅纯文本；Markdown 保持统一 LF 的旧行为）
+  _contentForWrite(tab) {
+    const text = this.syncContent(tab);
+    if (tab && tab.eol === '\r\n' && this._isPlainTextTab(tab)) return TextDoc.applyEol(text, '\r\n');
+    return text;
+  }
+
+  // 超长单行扫描只在打开 / 切换时做一次（不进打字热路径）：见 HUGE_LINE_RE 的说明
+  _hasHugeLine(tab) {
+    const t = tab || this.activeTab;
+    return !!(t && t.content && HUGE_LINE_RE.test(t.content));
+  }
+
+  _syncPreviewCollapseButton(isCollapsed) {
+    const sideRight = document.getElementById('btn-side-right');
+    if (!sideRight) return;
+    sideRight.innerHTML = isCollapsed ? '&#9664;' : '&#9654;';
+    sideRight.title = isCollapsed ? this.t('restorePreview') : this.t('collapsePreview');
+    sideRight.classList.toggle('side-active', isCollapsed);
+  }
+
+  // 预览区当前是否真的可见：折叠时预览内容不可见，重渲染纯属浪费（大文档打字卡顿的主因之一）
+  _previewPaneVisible() {
+    const container = document.querySelector('.editor-container');
+    if (!container) return true;
+    return !container.classList.contains('preview-collapsed');
+  }
+
+  // 预览面板姿态（只碰 DOM，不碰编辑器实例，好让 applyViewMode 能单独重放这一步）：
+  // 纯文本的预览只是原文重排，占着半屏没有意义 → 默认折叠，右侧 ▶ 可展开。
+  // 用 data 属性标记「折叠是我们施加的」：用户自己折叠的 Markdown 预览区切换标签时不得被展开。
+  _applyPaneMode() {
+    const plain = this._isPlainTextTab(this.activeTab);
+    const container = document.querySelector('.editor-container');
+    if (!container) return;
+    if (plain && this.viewMode !== 'preview') {
+      container.classList.add('preview-collapsed');
+      container.dataset.plainCollapse = '1';
+      this._syncPreviewCollapseButton(true);
+    } else if (container.dataset.plainCollapse === '1') {
+      delete container.dataset.plainCollapse;
+      container.classList.remove('preview-collapsed');
+      this._syncPreviewCollapseButton(false);
+    }
+  }
+
+  // 按当前标签的文档类型施加编辑姿态：语法着色、括号自动配对、Markdown 专属键位与界面。
+  _applyDocMode() {
+    const tab = this.activeTab;
+    const plain = this._isPlainTextTab(tab);
+    const switchedTab = this._docModeTab !== tab;
+    this._docModeTab = tab;
+    this._plainTextActive = plain;
+
+    const docMode = plain ? TextDoc.cmModeForPath(tab.filePath) : 'gfm';
+    if (this.cm.getOption('mode') !== docMode) this.cm.setOption('mode', docMode);
+    // 纯文本里自动补括号只会凭空多出一个右括号（日志、笔记常要手打 "(" ），连同配对高亮一起关掉；
+    // 有语法的代码文件（js/json/css…）仍然保留。
+    const isCode = plain && docMode !== null;
+    this.cm.setOption('autoCloseBrackets', !plain || isCode);
+    this.cm.setOption('matchBrackets', !plain || isCode);
+
+    // 含超长单行的纯文本（导出 JSON、带 base64 的日志）强制横向滚动，
+    // 其余文档沿用用户的「自动换行」设置
+    const hugeLine = plain && this._hasHugeLine(tab);
+    const wrap = this.settings.lineWrap && !hugeLine;
+    if (this.cm.getOption('lineWrapping') !== wrap) {
+      this.cm.setOption('lineWrapping', wrap);
+      this.refreshEditorLayout();
+    }
+
+    // 应用没有全局 .hidden 规则，工具栏收起用专属类名（与 .collapsed 折叠态互不干扰）
+    const formatToolbar = document.getElementById('format-toolbar');
+    if (formatToolbar) formatToolbar.classList.toggle('text-mode', plain);
+
+    if (switchedTab) this._applyPaneMode();
+
+    const kindEl = document.getElementById('doc-kind');
+    if (kindEl) {
+      let label = plain ? (isCode ? this.t('docKindCode') : this.t('docKindText')) : '';
+      // 因超长单行而关掉自动换行时说明原因，否则用户只会觉得「换行设置失效了」
+      if (hugeLine && this.settings.lineWrap) label += ' · ' + this.t('docKindNoWrap');
+      kindEl.textContent = label;
+      kindEl.classList.toggle('hidden', !label);
+    }
+    return plain;
   }
 
   // 校验从 localStorage 读取的配置为纯对象，避免畸形 JSON（数组/字符串/null）污染设置并原样回写
@@ -1654,6 +1813,7 @@ class MarkdownEditor {
     document.getElementById('set-color-scheme').value = s.colorScheme || 'default';
     document.getElementById('set-font-scheme').value = s.fontScheme || 'system-sans';
     document.getElementById('set-default-view').value = s.defaultView;
+    document.getElementById('set-plain-text-mode').checked = s.plainTextMode;
     document.getElementById('set-git-autosync').value = String(s.gitAutoSyncMinutes ?? 5);
     document.getElementById('set-git-conflict').value = s.gitConflictStrategy === 'manual'
       ? 'markers'
@@ -1685,8 +1845,9 @@ class MarkdownEditor {
     });
     document.getElementById('set-line-wrap').addEventListener('change', (e) => {
       this.settings.lineWrap = e.target.checked;
-      this.cm.setOption('lineWrapping', this.settings.lineWrap);
       this.saveSettings();
+      // 实际换行由 _applyDocMode 决定：含超长单行的纯文本仍强制横向滚动（否则一次换行测量就能卡住几秒）
+      this._applyDocMode();
     });
     document.getElementById('set-line-numbers').addEventListener('change', (e) => {
       this.settings.lineNumbers = e.target.checked;
@@ -1738,6 +1899,15 @@ class MarkdownEditor {
     document.getElementById('set-default-view').addEventListener('change', (e) => {
       this.settings.defaultView = e.target.value;
       this.saveSettings();
+    });
+    document.getElementById('set-plain-text-mode').addEventListener('change', (e) => {
+      this.settings.plainTextMode = e.target.checked;
+      this.saveSettings();
+      // 立即对当前文档生效：语法着色、预览方式都随判定改变
+      this._docModeTab = null;
+      this._applyDocMode();
+      this.updatePreview();
+      this.updateOutline();
     });
     document.getElementById('set-git-autosync').addEventListener('change', (e) => {
       this.settings.gitAutoSyncMinutes = Number(e.target.value) || 0;
@@ -1941,10 +2111,15 @@ class MarkdownEditor {
     this.updateSidebarChecks();
   }
 
-  updateOutline() {
+  updateOutline(contentHint) {
     if (!this.outlineVisible) return;
-    const content = this.cm.getValue();
     const outlineContent = document.getElementById('outline-content');
+    // 纯文本没有标题语法，大纲无从谈起（txt 里以 # 开头的行只是注释/标题行文本）
+    if (this._plainTextActive) {
+      outlineContent.innerHTML = `<div class="outline-empty">${this.t('noHeadings')}</div>`;
+      return;
+    }
+    const content = contentHint != null ? contentHint : this.syncContent(this.activeTab);
     const headings = Outline.extractHeadings(content, { headingToId: (t) => this.headingToId(t) });
 
     if (headings.length === 0) {
@@ -2411,6 +2586,7 @@ class MarkdownEditor {
     document.getElementById('set-color-scheme').value = defaults.colorScheme;
     document.getElementById('set-font-scheme').value = defaults.fontScheme;
     document.getElementById('set-default-view').value = defaults.defaultView;
+    document.getElementById('set-plain-text-mode').checked = defaults.plainTextMode;
     document.getElementById('set-git-autosync').value = String(defaults.gitAutoSyncMinutes);
     document.getElementById('set-git-conflict').value = defaults.gitConflictStrategy || 'markers';
     document.getElementById('set-autosave').value = String(defaults.autoSave);
@@ -2426,6 +2602,9 @@ class MarkdownEditor {
     this.updateImageAssetPathHint();
 
     await this.applySettings();
+    // plainTextMode 复位后重新判定当前文档类型（txt 会从 Markdown 姿态切回纯文本）
+    this._docModeTab = null;
+    this._applyDocMode();
     this.renderCustomFontSettings();
     this.setStatus(this.t('settingsReset'));
   }
@@ -2944,9 +3123,9 @@ class MarkdownEditor {
           cm.indentSelection('add');
           return;
         }
-        // 列表/引用行无选区：缩进整行形成子级（支持多级列表层级调整）
+        // 列表/引用行无选区：缩进整行形成子级（支持多级列表层级调整）；纯文本不适用
         const lineText = cm.getLine(cm.getCursor().line);
-        if (LIST_LINE_RE.test(lineText)) {
+        if (!this._plainTextActive && LIST_LINE_RE.test(lineText)) {
           cm.indentSelection('add');
           return;
         }
@@ -3148,9 +3327,10 @@ class MarkdownEditor {
             cm.indentSelection('add');
             return;
           }
-          // 列表/引用行无选区：缩进整行形成子级（支持多级列表层级调整）
+          // 列表/引用行无选区：缩进整行形成子级（支持多级列表层级调整）。
+          // 纯文本不适用：日志/笔记里以 - 或 1. 开头的行只是普通文字，不该被当成列表整行缩进。
           const lineText = cm.getLine(cm.getCursor().line);
-          if (LIST_LINE_RE.test(lineText)) {
+          if (!this._plainTextActive && LIST_LINE_RE.test(lineText)) {
             cm.indentSelection('add');
             return;
           }
@@ -3234,7 +3414,10 @@ class MarkdownEditor {
 
     this.cm.on('change', () => {
       if (!this.activeTab) return; // 无标签页空状态：不写回内容
-      this.activeTab.content = this.cm.getValue();
+      // 大文档不再每次按键复制整篇文本（CM5 getValue 会把所有行拼成新字符串），
+      // 只标脏；真正要读文本的时刻（保存 / 切标签 / 预览停顿刷新）再 syncContent。
+      if (this._isBigDoc()) this.activeTab._contentDirty = true;
+      else this.activeTab.content = this.cm.getValue();
       this.updateTabDisplay();
       this._scheduleAutoSave();
       // 大文档滑动窗口模式：打字时把窗口焦点同步到光标当前行（0-based），
@@ -3614,9 +3797,11 @@ class MarkdownEditor {
     if (!tab) return;
     if (tab._loaded || !tab.filePath) { tab._loaded = true; return; }
     try {
-      const content = await this.readFileNormalized(tab.filePath);
+      const { content, eol } = await this.readFileWithMeta(tab.filePath);
       tab.content = content;
       tab.savedContent = content;
+      tab.eol = eol;
+      tab._contentDirty = false;
       await this.refreshFileMeta(tab);
     } catch (e) {
       // 懒加载失败（文件被删/锁定/无权限）：标记错误并提示，避免静默空白
@@ -3651,6 +3836,7 @@ class MarkdownEditor {
       const oldTab = this.activeTab;
       if (oldTab) {
         oldTab.content = this.cm.getValue();
+        oldTab._contentDirty = false;
         oldTab.cursorPos = this.cm.getCursor();
         oldTab.scrollPos = { top: this.cm.getScrollInfo().top, left: this.cm.getScrollInfo().left };
         oldTab.previewScrollTop = this.preview.scrollTop;
@@ -3677,10 +3863,14 @@ class MarkdownEditor {
 
       this.cm.setOption('readOnly', false); // 从无标签页空状态恢复可编辑
       this.cm.setValue(newTab.content || '');
+      newTab._contentDirty = false;
       clearTimeout(this.debounceTimer);
       this.cm.setCursor(restoreCursor);
       this.cm.clearHistory();
 
+      // 语法着色 / 纯文本姿态必须先于预览渲染：updatePreview 按 _plainTextActive 决定走
+      // 纯文本渲染还是 Markdown 管线
+      this._applyDocMode();
       this.updateTabDisplay();
       await this.updatePreview();
       // 切换标签会同时改字号（每标签独立缩放）和内容，视口外的行高度全部作废。
@@ -3701,13 +3891,14 @@ class MarkdownEditor {
     }
   }
 
-  async addTab(name = '', content = '', filePath = null) {
+  async addTab(name = '', content = '', filePath = null, meta = null) {
     const defaultName = this.t('untitled');
     if (!name || name === defaultName) {
       name = `${defaultName}${this.untitledCounter++}`;
     }
-    content = content.replace(/\r\n/g, '\n');
-    const tab = new Tab(name, content, filePath);
+    const tab = new Tab(name, TextDoc.normalizeNewlines(content), filePath);
+    // meta.eol 来自 readFileWithMeta：纯文本保存时按原风格写回换行符
+    if (meta && meta.eol) tab.eol = meta.eol;
     this.tabs.push(tab);
     this.refreshFileMeta(tab);
     await this.switchTab(this.tabs.length - 1);
@@ -3742,7 +3933,7 @@ class MarkdownEditor {
             tab.filePath = path;
             tab.name = path.split(/[/\\]/).pop();
           }
-          await invoke('write_file', { path: tab.filePath, content: tab.content });
+          await invoke('write_file', { path: tab.filePath, content: this._contentForWrite(tab) });
           tab.savedContent = tab.content;
           await this.refreshFileMeta(tab);
           this.setStatus(`${this.t('saved')}: ${tab.filePath}`);
@@ -3774,7 +3965,9 @@ class MarkdownEditor {
       this.cm.setOption('readOnly', false);
       await this.ensureTabLoaded(this.activeTab);
       this.cm.setValue(this.activeTab.content || '');
+      this.activeTab._contentDirty = false;
       this.cm.setCursor(this.activeTab.cursorPos || { line: 0, ch: 0 });
+      this._applyDocMode();
       this.updatePreview();
     }
     this.saveSession();
@@ -3785,6 +3978,7 @@ class MarkdownEditor {
     this.cm.setOption('readOnly', true);
     this.cm.setValue('');
     this.cm.clearHistory();
+    this._applyDocMode();
     this.preview.innerHTML = '';
     this.cursorPosition.textContent = '';
     this.updateWordCount();
@@ -5357,7 +5551,8 @@ class MarkdownEditor {
     for (let i = 0; i < this.tabs.length; i++) {
       const tab = this.tabs[i];
       await this.ensureTabLoaded(tab);
-      const content = tab.content || '';
+      // syncContent：跨标签查找要读全文，活动标签在惰性模式下 content 可能落后于编辑器
+      const content = this.syncContent(tab) || '';
       const lines = content.split('\n');
       const matches = [];
       const LIMIT = 500;
@@ -5646,9 +5841,9 @@ class MarkdownEditor {
                 this.switchTab(existingIndex);
                 return;
               }
-              const content = await this.readFileNormalized(targetPath);
+              const { content, eol } = await this.readFileWithMeta(targetPath);
               const name = targetPath.split(/[/\\]/).pop();
-              this.addTab(name, content, targetPath);
+              this.addTab(name, content, targetPath, { eol });
               this.activeTab.savedContent = content;
               this.updateTabDisplay();
               return;
@@ -6201,12 +6396,16 @@ class MarkdownEditor {
       const scrollInfo = this.cm.getScrollInfo();
       const cursorPos = this.cm.getCursor();
       const previewScrollTop = this.preview.scrollTop;
-      const content = await invoke('read_file', { path: tab.filePath });
+      const { content, eol } = await this.readFileWithMeta(tab.filePath);
       tab.content = content;
       tab.savedContent = content;
+      tab.eol = eol;
+      tab._contentDirty = false;
       // 重新加载：markdown 和图片都可能在外部被改动，清图片 base64 缓存强制重读
       this._imageBase64Cache.clear();
       this.cm.setValue(content);
+      // 换行风格与扩展名一样属于文档属性，重载后重新判定一次姿态
+      this._applyDocMode();
       // 取消 change 事件调度的 debounced 预览更新，后续显式调用 updatePreview 替代
       clearTimeout(this.debounceTimer);
       this.cm.setCursor(cursorPos);
@@ -6230,7 +6429,7 @@ class MarkdownEditor {
       const selected = await dialogOpen({
         multiple: true,
         filters: [
-          { name: 'Markdown', extensions: ['md', 'markdown', 'txt'] },
+          { name: 'Markdown / Text', extensions: ['md', 'markdown', 'txt', 'log'] },
           { name: this.t('allFiles'), extensions: ['*'] }
         ]
       });
@@ -6247,15 +6446,15 @@ class MarkdownEditor {
           continue;
         }
         try {
-          const content = await this.readFileNormalized(filePath);
+          const { content, eol } = await this.readFileWithMeta(filePath);
           const name = filePath.split(/[/\\]/).pop();
-          this.addTab(name, content, filePath);
+          this.addTab(name, content, filePath, { eol });
           openedCount++;
         } catch (e) {
           console.error('Failed to open file:', filePath, e);
         }
       }
-      this.viewMode = this.settings.defaultView || 'edit';
+      this.viewMode = this._isPlainTextTab(this.activeTab) ? 'edit' : (this.settings.defaultView || 'edit');
       this.applyViewMode();
       this.updateWordCount();
       this.setStatus(openedCount > 0 ? this.t('openedFiles', { n: openedCount }) : this.t('alreadyOpen'));
@@ -6349,9 +6548,10 @@ class MarkdownEditor {
     const active = this.activeTab;
     if (active && active.filePath) {
       try {
-        const content = await this.readFileNormalized(active.filePath);
+        const { content, eol } = await this.readFileWithMeta(active.filePath);
         active.content = content;
         active.savedContent = content;
+        active.eol = eol;
       } catch (e) {
         // 读盘失败（文件被删除/移动/无权限）：保留标签页但标记为加载失败，
         // 不再静默置空 content/savedContent（避免后续保存用空内容覆盖原文件）
@@ -6373,8 +6573,11 @@ class MarkdownEditor {
     const restorePreviewTop = (active && active.previewScrollTop) || 0;
 
     this.cm.setValue(this.activeTab.content || '');
+    if (active) active._contentDirty = false;
     this.cm.setCursor(restoreCursor);
     this.cm.clearHistory();
+    // 文档姿态要先于预览渲染：恢复的可能是 txt 等纯文本，否则会按 Markdown 管线整篇解析
+    this._applyDocMode();
     this.updateTabBar();
     this.updateTabDisplay();
     await this.updatePreview();
@@ -6438,10 +6641,11 @@ class MarkdownEditor {
       }
       // 文件树列出全部类型（含图片附件），图片走灯箱预览：按文本解码二进制只会得到乱码标签页
       if (await this.showLocalImage(filePath)) return;
-      const content = await this.readFileNormalized(filePath);
+      const { content, eol } = await this.readFileWithMeta(filePath);
       const name = filePath.split(/[/\\]/).pop();
-      await this.addTab(name, content, filePath);
-      this.viewMode = this.settings.defaultView || 'edit';
+      await this.addTab(name, content, filePath, { eol });
+      // 纯文本的预览内容与编辑区一致，按「预览」视图打开等于两屏重复文字 → 固定编辑视图
+      this.viewMode = this._isPlainTextTab(this.activeTab) ? 'edit' : (this.settings.defaultView || 'edit');
       this.applyViewMode();
       this.updateWordCount();
       this.setStatus(this.t('fileOpened', { name }));
@@ -7822,16 +8026,19 @@ class MarkdownEditor {
         path = await dialogSave({
           filters: [
             { name: 'Markdown', extensions: ['md'] },
+            { name: 'Text', extensions: ['txt'] },
             { name: this.t('allFiles'), extensions: ['*'] }
           ]
         });
         if (!path) return;
       }
 
-      await invoke('write_file', { path, content: this.activeTab.content });
+      await invoke('write_file', { path, content: this._contentForWrite(this.activeTab) });
       if (!this.activeTab.filePath) {
         this.activeTab.filePath = path;
         this.activeTab.name = path.split(/[/\\]/).pop();
+        // 首次落盘的扩展名决定文档类型（.md → Markdown，.txt → 纯文本），重新施加编辑姿态
+        this._applyDocMode();
       }
       this.activeTab.savedContent = this.activeTab.content;
       this.updateTabDisplay();
@@ -7867,11 +8074,11 @@ class MarkdownEditor {
     if (!tab || !this.tabs.includes(tab) || !tab.filePath) return;
     if ((Number(this.settings.autoSave) || 0) <= 0) return;
     if (tab.pendingExternalChange || this._autoSaving || !tab.isModified) return;
-    const content = tab.content;
+    const content = this._contentForWrite(tab);
     this._autoSaving = true;
     try {
       await invoke('write_file', { path: tab.filePath, content });
-      tab.savedContent = content;
+      tab.savedContent = tab.content;
       this.updateTabDisplay();
       await this.refreshFileMeta(tab);
       this.saveSession();
@@ -7891,15 +8098,18 @@ class MarkdownEditor {
         defaultPath: this.activeTab.filePath || `${this.activeTab.name}`,
         filters: [
           { name: 'Markdown', extensions: ['md'] },
+          { name: 'Text', extensions: ['txt'] },
           { name: this.t('allFiles'), extensions: ['*'] }
         ]
       });
       if (!path) return;
 
-      await invoke('write_file', { path, content: this.activeTab.content });
+      await invoke('write_file', { path, content: this._contentForWrite(this.activeTab) });
       this.activeTab.filePath = path;
       this.activeTab.name = path.split(/[/\\]/).pop();
       this.activeTab.savedContent = this.activeTab.content;
+      // 另存后的扩展名可能改变文档类型（md ↔ txt），重新施加语法着色与预览姿态
+      this._applyDocMode();
       this.updateTabBar();
       await this.refreshFileMeta(this.activeTab);
       this.setStatus(`${this.t('savedAs')}: ${path}`);
@@ -8327,10 +8537,17 @@ input[type="checkbox"]:checked::after { display: none !important; }
     }
     clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
-      this.updatePreview(true);
-      this.updateWordCount();
-      this.updateOutline();
-    }, 300);
+      // 一次 getValue 供预览 / 字数 / 大纲共用，并顺手兑现大文档的惰性回写
+      const content = this.cm.getValue();
+      const tab = this.activeTab;
+      if (tab) { tab.content = content; tab._contentDirty = false; }
+      // 预览区折叠（纯文本默认如此）时内容不可见，跳过整篇渲染；
+      // 展开或切换视图时由 togglePreviewCollapse / applyViewMode 补渲染
+      if (this._previewPaneVisible()) this.updatePreview(true, content);
+      else this._previewRenderSkipped = true;
+      this.updateWordCount(content, { live: true });
+      this.updateOutline(content);
+    }, this._isBigDoc() ? BIG_PREVIEW_DEBOUNCE_MS : 300);
   }
 
   // 按空行切分为逻辑块，跟踪围栏代码块（内部不切分）
@@ -8537,8 +8754,8 @@ input[type="checkbox"]:checked::after { display: none !important; }
   }
 
   // 根据 unified 渲染结果重建滚动同步数据（仅在内容变化时调用）
-  rebuildScrollSync() {
-    const content = this.cm.getValue();
+  rebuildScrollSync(contentHint) {
+    const content = contentHint != null ? contentHint : this.cm.getValue();
     const totalLines = content.split('\n').length;
 
     // 构建平行位置数组（使用 data-source-line）
@@ -8901,42 +9118,6 @@ input[type="checkbox"]:checked::after { display: none !important; }
     return head;
   }
 
-  // 是否“块起点”（用于切割窗口时选择边界）：空行、标题、围栏、分割线、表格行
-  _isBlockStart(s) {
-    s = (s || '').trim();
-    return s === '' || /^#{1,6}\s/.test(s) || /^`{3,}/.test(s) || /^~{3,}/.test(s) ||
-           /^(-{3,}|\*{3,}|_{3,})$/.test(s) || s.startsWith('|');
-  }
-
-  // 大文档滑动窗口：根据焦点行（0-based）计算需要渲染的源码切片 [start, end)
-  _computePreviewWindow(content, focusLine) {
-    const lines = content.split('\n');
-    const total = lines.length;
-    if (total <= MAX_PREVIEW_LINES) return { start: 0, end: total };
-
-    let start = Math.max(0, focusLine - PREVIEW_WINDOW_LEAD);
-    let end = Math.min(total, start + PREVIEW_WINDOW_LINES);
-    if (end - start < PREVIEW_WINDOW_LINES) start = Math.max(0, end - PREVIEW_WINDOW_LINES);
-
-    // 起点回退到块边界（含代码围栏起点，避免从围栏中间切开）
-    let guard = 0;
-    while (start > 0 && guard < 500) {
-      if (this._isBlockStart(lines[start - 1])) { start -= 1; break; }
-      start -= 1; guard++;
-    }
-
-    // 终点后移到块边界 / 围栏闭合处
-    guard = 0;
-    while (end < total && guard < 500) {
-      const fences = (lines.slice(start, end + 1).join('\n').match(/^`{3,}|^~{3,}/gm) || []).length;
-      if (fences % 2 === 0 && this._isBlockStart(lines[end]) && end > start) break;
-      end += 1; guard++;
-    }
-    if (end > total) end = total;
-    if (end <= start) end = Math.min(total, start + 1);
-    return { start, end };
-  }
-
   // 构建窗口内 [源码行(1-based), 相对预览内容顶部像素] 的有序映射
   _buildWindowLineTops() {
     const pRect = this.preview.getBoundingClientRect();
@@ -8966,8 +9147,7 @@ input[type="checkbox"]:checked::after { display: none !important; }
   // 纯预览模式大文档：把窗口片段渲染到「撑满全文高度的占位 + 绝对定位块」中，
   // 使原生滚动条代表整篇文档，用户可平滑滚动 / 拖到任意位置查看全文（虚拟滚动）。
   // 平均行高恒定（首次渲染后校准一次），故 scrollTop ↔ 源码行比例精确，与 avg 估算无关。
-  _renderPreviewWindowBlock(finalHtml, win, content) {
-    const totalLines = content.split('\n').length;
+  _renderPreviewWindowBlock(finalHtml, win, totalLines) {
     const avg = this._avgLineHeight || 22;
     const estTotal = totalLines * avg;
     const blockTop = win.start * avg;
@@ -9020,7 +9200,7 @@ input[type="checkbox"]:checked::after { display: none !important; }
     }, 120);
   }
 
-    async updatePreview(suppressLoading = false) {
+    async updatePreview(suppressLoading = false, contentHint = null) {
       // 防御：若被勾选抑制标记触发（应已被 debounceUpdatePreview 拦截），直接轻量返回，杜绝全量重渲染
       if (this._suppressNextPreviewRerender) {
         this._suppressNextPreviewRerender = false;
@@ -9029,10 +9209,16 @@ input[type="checkbox"]:checked::after { display: none !important; }
         return;
       }
       const gen = ++this._renderGeneration;
+      this._previewRenderSkipped = false;
       let needLoad = false;
       try {
-        const content = this.cm.getValue();
-        const totalLines = content.split('\n').length;
+        // contentHint 由打字防抖路径传入：同一份文本供预览 / 字数 / 大纲共用，
+        // 避免一次停顿里重复 getValue（大文档下每次都是整篇字符串拼接）
+        const content = contentHint != null ? contentHint : this.cm.getValue();
+        const lines = content.split('\n');
+        const totalLines = lines.length;
+        // 纯文本（txt/log 等）不套 Markdown 管线：原文按行渲染，不做 [TOC]、公式、mermaid、代码高亮
+        const plain = this._plainTextActive === true;
         const isLarge = content.length > MAX_PREVIEW_CHARS || totalLines > MAX_PREVIEW_LINES;
 
         // 大文档重渲染耗时明显：在加载层可见时由本函数接管其生命周期（引用计数），
@@ -9047,11 +9233,17 @@ input[type="checkbox"]:checked::after { display: none !important; }
         this._previewTruncated = false;
         if (isLarge) {
           const focus = (this._previewFocusLine != null) ? this._previewFocusLine : 0;
-          const win = this._computePreviewWindow(content, focus);
+          // 窗口计算复用 src/modules/preview-window.js：那里是「围栏前缀和」的 O(n) 版本，
+          // app.js 旧副本每步对整窗口 slice+join+match（O(n²)），是拖大文档预览的隐性热点
+          const win = PreviewWindow.computePreviewWindow(content, focus, {
+            maxLines: MAX_PREVIEW_LINES,
+            lead: PREVIEW_WINDOW_LEAD,
+            windowLines: PREVIEW_WINDOW_LINES,
+          });
           this.previewWindow = win;
           this._previewSliceOffset = win.start;
           this._previewVirtual = (this.viewMode === 'preview');
-          const slice = content.split('\n').slice(win.start, win.end).join('\n');
+          const slice = lines.slice(win.start, win.end).join('\n');
           renderContent = slice.length > HEAD_RENDER_CHAR_CAP ? slice.slice(0, HEAD_RENDER_CHAR_CAP) : slice;
           this._previewTruncated = true;
         } else {
@@ -9061,7 +9253,7 @@ input[type="checkbox"]:checked::after { display: none !important; }
         }
 
 
-      const hasToc = content.includes('[TOC]') || content.includes('[toc]');
+      const hasToc = !plain && (content.includes('[TOC]') || content.includes('[toc]'));
       let tocHtml = '';
       if (hasToc) {
         tocHtml = await invoke('generate_toc', { content });
@@ -9074,7 +9266,10 @@ input[type="checkbox"]:checked::after { display: none !important; }
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       }
 
-      const html = UnifiedRenderer.renderMarkdown(renderContent, { softBreaks: this.settings.softBreaks });
+      // 纯文本走原文渲染（按行打锚点的 <pre>），Markdown 走 unified 管线
+      const html = plain
+        ? TextDoc.renderPlainTextHtml(renderContent, { startLine: this._previewSliceOffset })
+        : UnifiedRenderer.renderMarkdown(renderContent, { softBreaks: this.settings.softBreaks });
       if (gen !== this._renderGeneration) return;
 
       let finalHtml = html;
@@ -9083,11 +9278,13 @@ input[type="checkbox"]:checked::after { display: none !important; }
       }
 
       // 内嵌 base64 图片改为按内容缓存的 Blob URL，避免每次重渲染重复解码（大文档多图时是关键性能点）
-      finalHtml = finalHtml.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g, (m) => this.getCachedImageURL(m));
+      if (!plain) {
+        finalHtml = finalHtml.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g, (m) => this.getCachedImageURL(m));
+      }
 
       // 滑动窗口：渲染的是切片后的源码，需把 data-source-line 还原为绝对行号（与编辑区一致），
-      // 否则大纲锚点 / 滚动定位会错位
-      if (this.previewWindow && this._previewSliceOffset > 0) {
+      // 否则大纲锚点 / 滚动定位会错位。纯文本分支的锚点已按绝对行号生成，无需再加偏移。
+      if (!plain && this.previewWindow && this._previewSliceOffset > 0) {
         const off = this._previewSliceOffset;
         finalHtml = finalHtml.replace(/data-source-line="(\d+)"/g, (m, n) => `data-source-line="${parseInt(n, 10) + off}"`);
       }
@@ -9095,7 +9292,7 @@ input[type="checkbox"]:checked::after { display: none !important; }
       this._canScroll.editor = false;
       this._canScroll.preview = false;
       if (this._previewVirtual && this.previewWindow) {
-        this._renderPreviewWindowBlock(finalHtml, this.previewWindow, content);
+        this._renderPreviewWindowBlock(finalHtml, this.previewWindow, totalLines);
       } else {
         this.preview.style.position = '';
         this.preview.style.padding = '';
@@ -9104,7 +9301,6 @@ input[type="checkbox"]:checked::after { display: none !important; }
 
       // 超大文档：顶部全局横幅提示（不塞进预览内容，避免随滚动/重渲染消失）
       if (this._previewTruncated) {
-        const totalLines = content.split('\n').length;
         const key = this.activeTab ? (this.activeTab.filePath || ('untitled:' + this.tabs.indexOf(this.activeTab))) : 'none';
         this.showLargeFileNotice(key, totalLines, content.length);
         this._previewTruncated = false;
@@ -9112,37 +9308,42 @@ input[type="checkbox"]:checked::after { display: none !important; }
         this.hideLargeFileNotice();
       }
 
-      this.preview.querySelectorAll('details:not([open])').forEach(el => el.open = true);
-      // 任务列表 checkbox：remark-gfm 默认输出 disabled 不可交互，渲染后移除 disabled 使其可点击
-      this.preview.querySelectorAll('input[type="checkbox"][disabled]').forEach(cb => cb.removeAttribute('disabled'));
+      // 以下都是 Markdown 专属的 DOM 后处理：可折叠块、任务勾选框、相对图片路径解析、
+      // emoji/缩写/脚注/标题锚点、mermaid、代码高亮与复制按钮。
+      // 纯文本预览里没有这些节点，逐一遍历整篇只是开销（大 txt 的关键卡顿点）。
+      if (!plain) {
+        this.preview.querySelectorAll('details:not([open])').forEach(el => el.open = true);
+        // 任务列表 checkbox：remark-gfm 默认输出 disabled 不可交互，渲染后移除 disabled 使其可点击
+        this.preview.querySelectorAll('input[type="checkbox"][disabled]').forEach(cb => cb.removeAttribute('disabled'));
 
-      try { await this.processImages(); } catch (e) { console.warn('[preview] Images error:', e); }
-      if (gen !== this._renderGeneration) { this._resumeScroll(); return; }
-      const postOpts = {
-        t: (k) => this.t(k),
-        isDark: this.isDark,
-        escapeHtml: (s) => this.escapeHtml(s),
-        escapeAttr: (s) => this.escapeAttr(s),
-        headingToId: (s) => this.headingToId(s),
-        mermaidCache: this._mermaidCache,
-      };
-      try { PreviewPost.processEmojiShortcodes(this.preview); } catch (e) { console.warn('[preview] Emoji error:', e); }
-      try { PreviewPost.processMath(this.preview); } catch (e) { console.warn('[preview] Math error:', e); }
-      try { PreviewPost.processAbbreviations(this.preview, postOpts); } catch (e) { console.warn('[preview] Abbr error:', e); }
-      try { this.processFootnotes(); } catch (e) { console.warn('[preview] Footnotes error:', e); }
-      try { PreviewPost.processHeadings(this.preview, postOpts); } catch (e) { console.warn('[preview] Headings error:', e); }
-      try { await PreviewPost.processMermaid(this.preview, postOpts); } catch (e) { console.warn('[preview] Mermaid error:', e); }
-      if (gen !== this._renderGeneration) { this._resumeScroll(); return; }
-      try { PreviewPost.addCopyButtons(this.preview, postOpts); } catch (e) { console.warn('[preview] Copy btn error:', e); }
+        try { await this.processImages(); } catch (e) { console.warn('[preview] Images error:', e); }
+        if (gen !== this._renderGeneration) { this._resumeScroll(); return; }
+        const postOpts = {
+          t: (k) => this.t(k),
+          isDark: this.isDark,
+          escapeHtml: (s) => this.escapeHtml(s),
+          escapeAttr: (s) => this.escapeAttr(s),
+          headingToId: (s) => this.headingToId(s),
+          mermaidCache: this._mermaidCache,
+        };
+        try { PreviewPost.processEmojiShortcodes(this.preview); } catch (e) { console.warn('[preview] Emoji error:', e); }
+        try { PreviewPost.processMath(this.preview); } catch (e) { console.warn('[preview] Math error:', e); }
+        try { PreviewPost.processAbbreviations(this.preview, postOpts); } catch (e) { console.warn('[preview] Abbr error:', e); }
+        try { this.processFootnotes(); } catch (e) { console.warn('[preview] Footnotes error:', e); }
+        try { PreviewPost.processHeadings(this.preview, postOpts); } catch (e) { console.warn('[preview] Headings error:', e); }
+        try { await PreviewPost.processMermaid(this.preview, postOpts); } catch (e) { console.warn('[preview] Mermaid error:', e); }
+        if (gen !== this._renderGeneration) { this._resumeScroll(); return; }
+        try { PreviewPost.addCopyButtons(this.preview, postOpts); } catch (e) { console.warn('[preview] Copy btn error:', e); }
 
-      // 代码高亮 + 行号：抽到 src/modules/code-block.js（独立模块，便于单独测试）
-      try {
-        CodeBlock.processCodeBlocks(this.preview, {
-          hljs,
-          cache: this._hljsCache,
-          lineNumbers: this.preview.classList.contains('code-line-numbers'),
-        });
-      } catch (e) { console.warn('[preview] Code block error:', e); }
+        // 代码高亮 + 行号：抽到 src/modules/code-block.js（独立模块，便于单独测试）
+        try {
+          CodeBlock.processCodeBlocks(this.preview, {
+            hljs,
+            cache: this._hljsCache,
+            lineNumbers: this.preview.classList.contains('code-line-numbers'),
+          });
+        } catch (e) { console.warn('[preview] Code block error:', e); }
+      }
 
       // 等待浏览器完成布局后再测量元素位置
       await new Promise(r => requestAnimationFrame(r));
@@ -9164,7 +9365,7 @@ input[type="checkbox"]:checked::after { display: none !important; }
       }
 
       // 重建滚动同步数据（blocks + 预览子元素）
-      this.rebuildScrollSync();
+      this.rebuildScrollSync(content);
 
       // 恢复预览滚动位置（逐行密集插值）；预览发起的编辑（复选框勾选）已保存位置，跳过以免被重算覆盖
       if (this.settings.scrollSync && this._editorElementList && this._editorElementList.length > 1) {
@@ -9453,9 +9654,11 @@ input[type="checkbox"]:checked::after { display: none !important; }
   async reloadTabFromDisk(tab) {
     if (!tab || !tab.filePath) return;
     try {
-      const content = await this.readFileNormalized(tab.filePath);
+      const { content, eol } = await this.readFileWithMeta(tab.filePath);
       tab.content = content;
       tab.savedContent = content;
+      tab.eol = eol;
+      tab._contentDirty = false;
       await this.refreshFileMeta(tab);
       tab.pendingExternalChange = false;
       // 同步清掉队列残留：否则 enqueueExternalChange 的 includes 检查会永久短路，
@@ -9645,8 +9848,17 @@ input[type="checkbox"]:checked::after { display: none !important; }
     }, 3000);
   }
 
-  updateWordCount() {
-    const { words, chars, lines } = WordCount.countStats(this.cm.getValue());
+  // 字数/字符/行数统计。content 可传入已取好的全文（打字路径复用同一份 getValue）。
+  // 统计是整篇正则扫描，超过 HEAVY_WORDCOUNT_CHARS 的文档只在 live 刷新时节流，
+  // 打开 / 切换 / 保存等显式调用始终重算。
+  updateWordCount(content, opts = {}) {
+    const text = content != null ? content : this.syncContent(this.activeTab);
+    if (opts.live && text.length > HEAVY_WORDCOUNT_CHARS) {
+      const now = Date.now();
+      if (this._lastWordCountAt && now - this._lastWordCountAt < HEAVY_WORDCOUNT_THROTTLE_MS) return;
+    }
+    this._lastWordCountAt = Date.now();
+    const { words, chars, lines } = WordCount.countStats(text);
     this.wordCountEl.textContent = `${this.t('words')}: ${words}`;
     this.charCountEl.textContent = `${this.t('chars')}: ${chars}`;
     this.lineCountEl.textContent = `${this.t('lines')}: ${lines}`;
@@ -9762,6 +9974,16 @@ input[type="checkbox"]:checked::after { display: none !important; }
       sideRight.title = this.t('collapsePreview');
     }
 
+    // 上面的 classList.remove 会抹掉 preview-collapsed；纯文本默认折叠预览，
+    // 这里重新判定面板姿态（只碰 DOM：视图切换不需要重放编辑器选项）
+    this._applyPaneMode();
+
+    // 折叠期间被跳过的渲染必须在此补上，否则切到预览视图会看到过期内容
+    if (this._previewRenderSkipped && this._previewPaneVisible()) {
+      this._previewRenderSkipped = false;
+      this.updatePreview();
+    }
+
     // 存句柄：大纲跳转等用户操作可在本定时器到期前 clearTimeout 取消，
     // 避免「视图模式恢复滚动」在跳转之后晚到、把编辑器/预览又拉回旧位置。
     clearTimeout(this._viewModeRestoreTimer);
@@ -9824,11 +10046,9 @@ input[type="checkbox"]:checked::after { display: none !important; }
     this._canScroll.editor = false;
     this._canScroll.preview = false;
 
-    const sideRight = document.getElementById('btn-side-right');
     const editorPane = document.getElementById('editor-pane');
     const previewPane = document.getElementById('preview-pane');
     const previewScrollTop = this.preview.scrollTop;
-
     editorPane.style.flex = '';
     editorPane.style.width = '';
     previewPane.style.flex = '';
@@ -9836,9 +10056,12 @@ input[type="checkbox"]:checked::after { display: none !important; }
 
     container.classList.toggle('preview-collapsed');
     const isCollapsed = container.classList.contains('preview-collapsed');
-    sideRight.innerHTML = isCollapsed ? '&#9664;' : '&#9654;';
-    sideRight.title = isCollapsed ? this.t('restorePreview') : this.t('collapsePreview');
-    sideRight.classList.toggle('side-active', isCollapsed);
+    // 折叠来源改为人工：标记与实际状态保持一致，切标签时才不会被误展开/误折叠
+    if (isCollapsed) container.dataset.plainCollapse = '1';
+    else delete container.dataset.plainCollapse;
+    this._syncPreviewCollapseButton(isCollapsed);
+    // 折叠期间的编辑不重渲染预览（省掉整篇解析），展开时补一次
+    if (!isCollapsed) this.updatePreview();
 
     let restored = false;
     const doRefresh = () => {
@@ -10355,6 +10578,12 @@ input[type="checkbox"]:checked::after { display: none !important; }
 
   // 表格行内按 Enter 自动补充表格结构
   _handleTableEnter(cm) {
+    // 纯文本（txt/log 等）：Enter 只换行。表格补全与 Markdown 列表续写会让「|」开头的日志行、
+    // 「- 」开头的条目凭空长出语法字符。
+    if (this._plainTextActive) {
+      cm.execCommand('newlineAndIndent');
+      return;
+    }
     const TABLE_ROW_RE = /^\|.*\|\s*$/;
     const TABLE_SEPARATOR_RE = /^\|\s*[-:][-:\s]*\|/;
     const pos = cm.getCursor();
@@ -10715,8 +10944,9 @@ input[type="checkbox"]:checked::after { display: none !important; }
       } else {
         for (const tab of otherModified) {
           tab.content = tab.savedContent;
+          tab._contentDirty = false;
         }
-        this.cm.setValue(this.activeTab.content);
+        this.cm.setValue(this.syncContent(this.activeTab));
         this.updateTabDisplay();
         this.updatePreview();
       }
@@ -10726,6 +10956,7 @@ input[type="checkbox"]:checked::after { display: none !important; }
     this.activeTabIndex = 0;
     await this.ensureTabLoaded(tab);
     this.cm.setValue(tab.content || '');
+    tab._contentDirty = false;
     this.cm.setCursor(tab.cursorPos || { line: 0, ch: 0 });
     this.updateTabBar();
     this.updatePreview();
@@ -10777,6 +11008,7 @@ input[type="checkbox"]:checked::after { display: none !important; }
           const path = await dialogSave({
             filters: [
               { name: 'Markdown', extensions: ['md'] },
+              { name: 'Text', extensions: ['txt'] },
               { name: this.t('allFiles'), extensions: ['*'] }
             ]
           });
@@ -10784,7 +11016,9 @@ input[type="checkbox"]:checked::after { display: none !important; }
           tab.filePath = path;
           tab.name = path.split(/[/\\]/).pop();
         }
-        await invoke('write_file', { path: tab.filePath, content: tab.content });
+        // _contentForWrite：先兑现大文档的惰性回写，否则批量保存会写出过期内容
+        const text = this._contentForWrite(tab);
+        await invoke('write_file', { path: tab.filePath, content: text });
         tab.savedContent = tab.content;
         await this.refreshFileMeta(tab);
       } catch (error) {
@@ -10813,6 +11047,7 @@ input[type="checkbox"]:checked::after { display: none !important; }
         } else {
           for (const tab of modified) {
             tab.content = tab.savedContent;
+            tab._contentDirty = false;
           }
           const remaining = this.tabs.filter(t => t.filePath || t.content !== '');
           if (remaining.length === 0) {

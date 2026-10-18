@@ -29,7 +29,7 @@ TizuMark's interface has four main areas:
 | Save File | `File → Save` | <kbd>Ctrl</kbd> + <kbd>S</kbd> |
 | Save As | `File → Save As` | — |
 | Recent Files | `File → Recent Files` | — |
-| CLI Open | `tizumark.exe document.md` | — |
+| CLI Open | `tizumark.exe document.md` / `tizumark.exe notes.txt` | — |
 | Close Tab | Click × on tab or right-click | <kbd>Ctrl</kbd> + <kbd>W</kbd> |
 
 > **Drag and drop** `.md` files directly into the window — supports multiple files. `File → Recent Files` quickly reopens previously edited documents.
@@ -102,6 +102,18 @@ Three right-click menus for efficient workflow:
 ### External File Change Prompt
 
 When an open file is modified by another program outside TizuMark, a banner appears at the top offering **Reload** / **Ignore** / **Reload All** / **Ignore All**, so you never accidentally overwrite your changes.
+
+### Plain Text Files (.txt / .log)
+
+`.txt` is registered as a file type during installation, so double-clicking it or picking TizuMark in "Open with" just works. Non-Markdown files (`.txt`, `.log`, `LICENSE` and the like) open as **plain text**:
+
+- No Markdown highlighting or reflowed preview — `#`, `|`, `*` in a log stay plain characters. The editor uses the full width; press the ▶ on the right if you want the as-is text pane back
+- Enter does not continue lists or tables, Tab only inserts spaces, and the Markdown format toolbar collapses
+- Saving keeps the file's original line endings (CRLF / LF) instead of silently converting notepad/log files to LF
+- Files with real syntax (`.js` / `.json` / `.py` / `.css` / `.html` / `.xml` / `.yaml` / `.sh`) are still highlighted per language
+- The status bar shows "Plain text" or "Code". Turn off Settings → Behavior → Plain Text Mode to treat every file as Markdown again
+
+Files with extremely long single lines (exported JSON, logs with base64) switch to horizontal scrolling instead of wrapping, since wrapping one such line alone would stall the editor; the status bar says so.
 
 ### Large Document Protection
 

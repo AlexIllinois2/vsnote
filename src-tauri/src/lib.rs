@@ -307,12 +307,20 @@ pub(crate) fn safe_write_target(path: &str) -> Result<std::path::PathBuf, String
 }
 
 #[tauri::command]
-fn read_file(path: String) -> Result<String, String> {
+async fn read_file(path: String) -> Result<String, String> {
+    // 读盘 + 解码放到阻塞线程：同步版本会把主线程按住整篇文件的时间，
+    // 打开几 MB 的 txt 时表现为窗口不响应、点击无回执。前端语义不变（仍是 Promise<string>）。
+    tauri::async_runtime::spawn_blocking(move || read_file_sync(&path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn read_file_sync(path: &str) -> Result<String, String> {
     // SQLite 工作区路由：路径属于已打开的 db 根时转调 sqlite_store
-    if let Some(root) = sqlite_store::match_root(&path) {
-        return sqlite_store::read_file(&root, &path);
+    if let Some(root) = sqlite_store::match_root(path) {
+        return sqlite_store::read_file(&root, path);
     }
-    let raw = fs::read(&path).map_err(|e| {
+    let raw = fs::read(path).map_err(|e| {
         // 结构化错误 JSON，前端按 kind 映射到错误码（E_NOT_FOUND / E_PERMISSION / E_LOCKED / E_IO）
         let kind = if e.kind() == std::io::ErrorKind::NotFound {
             "NotFound"
@@ -333,7 +341,7 @@ fn read_file(path: String) -> Result<String, String> {
         )
     })?;
 
-    Ok(decode_bytes(&raw))
+    Ok(decode_bytes_owned(raw))
 }
 
 // 读取打包资源文件（demo.md / screenshots/* 等），dev/prod 兼容：
@@ -404,6 +412,24 @@ pub(crate) fn decode_bytes(raw: &[u8]) -> String {
     }
     let (cow, _enc, _had_errors) = GB18030.decode(stripped);
     cow.into_owned()
+}
+
+// decode_bytes 的「接管所有权」版本，供整篇读文件使用：
+// 原先 &[u8] → String 必经 to_vec() 再拷贝一遍全文，几 MB 文本上是一次可省掉的分配+复制。
+// UTF-8 校验失败时 FromUtf8Error 仍持有原字节，直接借用做 GB18030 回退，同样不再拷贝。
+pub(crate) fn decode_bytes_owned(raw: Vec<u8>) -> String {
+    let stripped: Vec<u8> = if raw.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        raw[3..].to_vec()
+    } else {
+        raw
+    };
+    match String::from_utf8(stripped) {
+        Ok(s) => s,
+        Err(e) => {
+            let (cow, _enc, _had_errors) = GB18030.decode(e.as_bytes());
+            cow.into_owned()
+        }
+    }
 }
 
 #[derive(serde::Serialize, Clone, Copy)]
@@ -634,12 +660,19 @@ async fn search_in_files(
 }
 
 #[tauri::command]
-fn write_file(path: String, content: String) -> Result<(), String> {
-    if let Some(root) = sqlite_store::match_root(&path) {
-        return sqlite_store::write_file(&root, &path, &content);
+async fn write_file(path: String, content: String) -> Result<(), String> {
+    // 同 read_file：落盘（含 Windows 上的路径规范化与权限检查）移出主线程
+    tauri::async_runtime::spawn_blocking(move || write_file_sync(&path, &content))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn write_file_sync(path: &str, content: &str) -> Result<(), String> {
+    if let Some(root) = sqlite_store::match_root(path) {
+        return sqlite_store::write_file(&root, path, content);
     }
-    let _ = safe_write_target(&path)?;
-    fs::write(&path, &content).map_err(|e| e.to_string())
+    let _ = safe_write_target(path)?;
+    fs::write(path, content).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -3512,7 +3545,7 @@ $$\n\
     fn test_read_file_utf8() {
         let tmp = std::env::temp_dir().join("tizumark_read_utf8_test.txt");
         fs::write(&tmp, "hello 中文").unwrap();
-        let res = read_file(tmp.to_str().unwrap().to_string());
+        let res = read_file_sync(tmp.to_str().unwrap());
         assert!(res.is_ok(), "读取 UTF-8 文件应成功");
         assert_eq!(res.unwrap(), "hello 中文");
         let _ = fs::remove_file(&tmp);
@@ -3524,7 +3557,7 @@ $$\n\
         let s = "中文内容测试";
         let (encoded, _enc, _err) = GB18030.encode(s);
         fs::write(&tmp, encoded.as_ref()).unwrap();
-        let res = read_file(tmp.to_str().unwrap().to_string());
+        let res = read_file_sync(tmp.to_str().unwrap());
         assert!(res.is_ok(), "读取 GB18030 文件应成功（编码兼容）");
         assert_eq!(res.unwrap(), s, "GB18030 文件内容应正确还原");
         let _ = fs::remove_file(&tmp);
@@ -3534,10 +3567,32 @@ $$\n\
     fn test_read_file_missing_returns_structured_error() {
         let path = std::env::temp_dir()
             .join("tizumark_does_not_exist_xyz_12345.md");
-        let res = read_file(path.to_str().unwrap().to_string());
+        let res = read_file_sync(path.to_str().unwrap());
         assert!(res.is_err(), "读取不存在文件应返回错误");
         let err = res.unwrap_err();
         assert!(err.contains("\"kind\":\"NotFound\""), "错误应为结构化 JSON 且 kind=NotFound");
+    }
+
+    // decode_bytes 与 decode_bytes_owned 必须给出同一结果：后者只是省掉一次整篇拷贝，
+    // 不能改变 BOM / UTF-8 / GB18030 的判定顺序（前端换行保真与错误码都依赖这个语义）
+    #[test]
+    fn test_decode_bytes_owned_matches_borrowed() {
+        let mut bom_utf8: Vec<u8> = vec![0xEF, 0xBB, 0xBF];
+        bom_utf8.extend_from_slice("带 BOM 中文\r\n第二行".as_bytes());
+        let (gbk, _enc, _err) = GB18030.encode("GBK 中文日志");
+        let cases: Vec<Vec<u8>> = vec![
+            Vec::new(),
+            b"plain ascii\r\nline2\n".to_vec(),
+            bom_utf8,
+            gbk.as_ref().to_vec(),
+        ];
+        for bytes in cases {
+            assert_eq!(
+                decode_bytes(&bytes),
+                decode_bytes_owned(bytes.clone()),
+                "同一字节流两种解码入口结果应一致"
+            );
+        }
     }
 
     #[test]
@@ -3545,10 +3600,10 @@ $$\n\
         let tmp = std::env::temp_dir().join("tizumark_write_test.txt");
         let _ = fs::remove_file(&tmp);
         let content = "# 标题\n\n正文内容";
-        let w = write_file(tmp.to_str().unwrap().to_string(), content.to_string());
+        let w = write_file_sync(tmp.to_str().unwrap(), content);
         assert!(w.is_ok(), "write_file 应成功");
-        // 用底层 read_file 读回验证
-        let r = read_file(tmp.to_str().unwrap().to_string());
+        // 用底层读取验证
+        let r = read_file_sync(tmp.to_str().unwrap());
         assert!(r.is_ok());
         assert_eq!(r.unwrap(), content);
         let _ = fs::remove_file(&tmp);

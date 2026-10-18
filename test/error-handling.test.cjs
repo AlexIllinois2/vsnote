@@ -127,12 +127,14 @@ const { window } = dom;
 window.console.error = () => {}; // 屏蔽 reportError 的诊断输出，保持测试静默（真实运行时仍输出到 console）
 window.__TAURI__ = { core: { invoke: () => Promise.resolve('') }, path: {}, app: {}, event: {}, shell: {} };
 
-// app.js 的 IPC 全部经 TauriApi（P0-2b），必须先把模块注入同一 window，
-// 否则 readFileNormalized 等方法会 ReferenceError。
-const tauriApiSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'modules', 'tauri-api.js'), 'utf8');
-const sm = window.document.createElement('script');
-sm.textContent = tauriApiSrc;
-window.document.body.appendChild(sm);
+// app.js 的 IPC 全部经 TauriApi（P0-2b），换行归一化与文档类型判定经 TextDoc（纯文本模式），
+// 必须按 index.html 的顺序先把这些模块注入同一 window，否则 readFileNormalized 会 ReferenceError。
+for (const mod of ['tauri-api.js', 'text-doc.js']) {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'modules', mod), 'utf8');
+  const tag = window.document.createElement('script');
+  tag.textContent = src;
+  window.document.body.appendChild(tag);
+}
 
 const combined = appjs + '\n;\n' + harness;
 const s = window.document.createElement('script');

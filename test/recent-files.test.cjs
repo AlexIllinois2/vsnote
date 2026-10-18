@@ -14,6 +14,8 @@ const appjs = fs.readFileSync(path.join(__dirname, '..', 'src', 'app.js'), 'utf8
 const tauriApiSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'modules', 'tauri-api.js'), 'utf8');
 // P2-1：app.js 构造期 new PreviewController(this) 需要本 facade 先注入（同生产 index.html 顺序）。
 const previewControllerSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'controllers', 'preview-controller.js'), 'utf8');
+// app.js 的文档类型判定与换行归一化依赖 window.TextDoc（同样按 index.html 顺序先注入）
+const textDocSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'modules', 'text-doc.js'), 'utf8');
 
 // 在 jsdom 同一脚本作用域内运行，以便访问 app.js 顶层的 MarkdownEditor / Tab / I18N（class/const 不跨脚本共享）
 async function harnessFn() {
@@ -128,7 +130,7 @@ window.__TAURI__ = {
 // 合并为单个脚本：app.js 与 harness 同作用域（非模块 script 顶层 class/const 不跨脚本共享）
 // 同步把异步 IIFE 返回的 promise 赋给 window.__harnessPromise，避免 node:test 首个测试的竞态
 // （若用 .then() 延迟赋值，第一个测试会在微任务前就 await 到 undefined）
-const combined = tauriApiSrc + '\n;\n' + previewControllerSrc + '\n;\n' + appjs + '\n;\nwindow.__harnessPromise = (' + harnessFn.toString() + ')();';
+const combined = tauriApiSrc + '\n;\n' + textDocSrc + '\n;\n' + previewControllerSrc + '\n;\n' + appjs + '\n;\nwindow.__harnessPromise = (' + harnessFn.toString() + ')();';
 const s = window.document.createElement('script');
 s.textContent = combined;
 window.document.body.appendChild(s);

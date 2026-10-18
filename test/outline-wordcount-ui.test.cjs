@@ -9,14 +9,14 @@ const DOC = '# 一级标题\n\n正文\n\n## 二级 A\n\n### 三级 B\n\n## 二�
 
 test('outline-ui: 无标题渲染空提示', async () => withEditor({ captureInitErr: true }, async (w, ed) => {
   ed.cm.setValue('只有正文，没有标题');
-  ed.updateOutline();
+  ed.setOutlineVisible(true); // 大纲面板默认隐藏，updateOutline 有 !outlineVisible 早退
   const oc = w.document.getElementById('outline-content');
   assert.ok(oc.querySelector('.outline-empty'), '应渲染 outline-empty');
 }));
 
 test('outline-ui: 渲染层级结构与 data-line', async () => withEditor({ captureInitErr: true }, async (w, ed) => {
   ed.cm.setValue(DOC);
-  ed.updateOutline();
+  ed.setOutlineVisible(true); // 大纲面板默认隐藏，updateOutline 有 !outlineVisible 早退
   const oc = w.document.getElementById('outline-content');
   const items = [...oc.querySelectorAll('.outline-item')];
   assert.strictEqual(items.length, 4, '应渲染 4 个标题项');
@@ -27,7 +27,7 @@ test('outline-ui: 渲染层级结构与 data-line', async () => withEditor({ cap
 
 test('outline-ui: 点击标题项跳转编辑器光标并激活', async () => withEditor({ captureInitErr: true }, async (w, ed) => {
   ed.cm.setValue(DOC);
-  ed.updateOutline();
+  ed.setOutlineVisible(true); // 大纲面板默认隐藏，updateOutline 有 !outlineVisible 早退
   const oc = w.document.getElementById('outline-content');
   const target = [...oc.querySelectorAll('.outline-item')].find((i) => i.dataset.line === '6');
   assert.ok(target, '应找到三级 B 项');
@@ -40,7 +40,7 @@ test('outline-ui: 点击标题项跳转编辑器光标并激活', async () => wi
 
 test('outline-ui: 点击折叠开关切换子级显隐', async () => withEditor({ captureInitErr: true }, async (w, ed) => {
   ed.cm.setValue(DOC);
-  ed.updateOutline();
+  ed.setOutlineVisible(true); // 大纲面板默认隐藏，updateOutline 有 !outlineVisible 早退
   const oc = w.document.getElementById('outline-content');
   const toggle = oc.querySelector('.outline-toggle');
   assert.ok(toggle, '有子级的标题应有折叠开关');
@@ -86,7 +86,7 @@ test('outline-ui: escapeHtml / escapeAttr / escapeMdText 转义', async () => wi
 test('outline-ui: 纯符号标题点击不抛 SyntaxError', async () => withEditor({ captureInitErr: true }, async (w, ed) => {
   // headingToId('===') 产出空串；点击空 data-id 时 querySelector('#') 曾抛 SyntaxError
   ed.cm.setValue('# ===\n\n## 正常标题');
-  ed.updateOutline();
+  ed.setOutlineVisible(true); // 大纲面板默认隐藏，updateOutline 有 !outlineVisible 早退
   const oc = w.document.getElementById('outline-content');
   const symbolItem = [...oc.querySelectorAll('.outline-item')].find((i) => i.dataset.id === '');
   assert.ok(symbolItem, '纯符号标题应渲染为空 data-id');

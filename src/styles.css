@@ -859,6 +859,11 @@ body {
 .format-toolbar.collapsed .fmt-content {
   display: none;
 }
+/* 纯文本（txt / log 等）没有 Markdown 格式按钮，整条工具栏收起。
+   应用没有全局 .hidden 规则，因此用专属类名，避免与 .collapsed 折叠态互相干扰。 */
+.format-toolbar.text-mode {
+  display: none;
+}
 .fmt-content {
   display: flex;
   align-items: center;
@@ -2427,6 +2432,30 @@ body.is-resizing .side-btn {
 
 #word-count, #char-count, #line-count {
   opacity: 0.8;
+}
+
+/* 状态栏文档类型标记：纯文本 / 代码。Markdown 文档不显示（默认就是 Markdown） */
+.doc-kind {
+  padding: 1px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  opacity: 0.85;
+}
+.doc-kind.hidden { display: none; }
+
+/* 纯文本预览：原文按行呈现，等宽 + 保留空白，不参与 Markdown 排版。
+   用 #preview 前缀是为了压过 #preview pre 系列的代码块样式。 */
+#preview pre.plain-preview {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: .92em;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  tab-size: 4;
 }
 
 ::-webkit-scrollbar { width: 7px; height: 7px; }

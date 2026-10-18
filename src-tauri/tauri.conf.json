@@ -62,6 +62,13 @@
         "name": "Markdown",
         "description": "Markdown Document",
         "mimeType": "text/markdown"
+      },
+      {
+        "ext": ["txt"],
+        "name": "PlainText",
+        "description": "Plain Text Document",
+        "mimeType": "text/plain",
+        "role": "Editor"
       }
     ]
   }

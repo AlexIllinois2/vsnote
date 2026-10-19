@@ -1706,7 +1706,7 @@ class MarkdownEditor {
   _syncPreviewCollapseButton(isCollapsed) {
     const sideRight = document.getElementById('btn-side-right');
     if (!sideRight) return;
-    sideRight.innerHTML = isCollapsed ? '&#9664;' : '&#9654;';
+    // 按钮是固定 SVG（侧边栏 icon），状态只翻 title 与高亮类，不再替换 innerHTML
     sideRight.title = isCollapsed ? this.t('restorePreview') : this.t('collapsePreview');
     sideRight.classList.toggle('side-active', isCollapsed);
   }
@@ -9970,7 +9970,6 @@ input[type="checkbox"]:checked::after { display: none !important; }
       sideRight.classList.add('side-hidden');
     } else {
       sideRight.classList.remove('side-hidden', 'side-active');
-      sideRight.innerHTML = '&#9654;';
       sideRight.title = this.t('collapsePreview');
     }
 
@@ -10049,13 +10048,19 @@ input[type="checkbox"]:checked::after { display: none !important; }
     const editorPane = document.getElementById('editor-pane');
     const previewPane = document.getElementById('preview-pane');
     const previewScrollTop = this.preview.scrollTop;
-    editorPane.style.flex = '';
-    editorPane.style.width = '';
-    previewPane.style.flex = '';
-    previewPane.style.width = '';
 
     container.classList.toggle('preview-collapsed');
     const isCollapsed = container.classList.contains('preview-collapsed');
+    if (isCollapsed) {
+      // 折叠必须清掉内联 flex/width，否则压不过 .preview-collapsed 的类规则，预览区收不拢
+      editorPane.style.flex = '';
+      editorPane.style.width = '';
+      previewPane.style.flex = '';
+      previewPane.style.width = '';
+    } else {
+      // 展开恢复用户上次的分屏宽度，不要回到默认对半分
+      this.applyPreviewPaneWidth();
+    }
     // 折叠来源改为人工：标记与实际状态保持一致，切标签时才不会被误展开/误折叠
     if (isCollapsed) container.dataset.plainCollapse = '1';
     else delete container.dataset.plainCollapse;

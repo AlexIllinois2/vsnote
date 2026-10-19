@@ -497,9 +497,12 @@ body {
   color: var(--text-primary);
 }
 
-.app-sidebar-toggle.checked {
-  color: var(--accent-color);
-}
+/* 左上角侧边栏切换按钮（原 app logo 位置）：
+   状态由配套 icon 表达（箭头指向分隔线=收起，背离=展开），不做高亮着色。
+   侧栏隐藏（无 checked）显示展开 icon，侧栏可见（checked）显示收起 icon */
+.app-sidebar-toggle .icon-collapse { display: none; }
+.app-sidebar-toggle.checked .icon-collapse { display: block; }
+.app-sidebar-toggle.checked .icon-expand { display: none; }
 
 .tab-bar-wrapper {
   display: flex;
@@ -859,9 +862,19 @@ body {
 .format-toolbar.collapsed .fmt-content {
   display: none;
 }
-/* 纯文本（txt / log 等）没有 Markdown 格式按钮，整条工具栏收起。
-   应用没有全局 .hidden 规则，因此用专属类名，避免与 .collapsed 折叠态互相干扰。 */
 .format-toolbar.text-mode {
+  /* 纯文本整条工具栏视觉上收起（高度归零），仅保留悬浮的预览折叠按钮 */
+  height: 0;
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  background: transparent;
+  border-bottom: none;
+}
+.format-toolbar.text-mode .fmt-content {
+  display: none;
+}
+.format-toolbar.text-mode .fmt-collapse-toggle {
   display: none;
 }
 .fmt-content {
@@ -969,7 +982,7 @@ body {
 }
 .format-toolbar.collapsed .fmt-collapse-toggle {
   position: absolute;
-  right: 8px;
+  right: 40px; /* 预览折叠按钮悬浮在其右侧（right: 8px），此处左移让位 */
   top: 2px;
   height: 22px;
   min-height: 22px;
@@ -1482,8 +1495,7 @@ body.is-resizing * {
 
 body.is-resizing .editor-pane,
 body.is-resizing .preview-pane,
-body.is-resizing .outline-sidebar,
-body.is-resizing .side-btn {
+body.is-resizing .outline-sidebar {
   transition: none !important;
 }
 
@@ -2472,43 +2484,29 @@ body.is-resizing .side-btn {
 .editor-container.preview-collapsed .preview-pane { flex: 0; min-width: 0; width: 0; overflow: hidden; }
 .editor-container.preview-collapsed .editor-pane { flex: 1; }
 
-.side-btn {
+/* 预览折叠/恢复按钮：位于工具栏折叠按钮右侧，
+   状态由配套 icon 表达（箭头指向分隔线=收起，背离=展开），不做高亮着色 */
+#btn-side-right .icon-expand { display: none; }
+#btn-side-right.side-active .icon-collapse { display: none; }
+#btn-side-right.side-active .icon-expand { display: block; }
+#btn-side-right.side-hidden {
+  display: none;
+}
+/* 工具栏折叠 / 纯文本模式下按钮悬浮在编辑区右上角，始终位于 fmt-collapse 右侧 */
+.format-toolbar.collapsed #btn-side-right,
+.format-toolbar.text-mode #btn-side-right {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 10;
-  width: 16px;
-  height: 50px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  right: 8px;
+  top: 2px;
+  height: 22px;
+  min-height: 22px;
+  max-height: 22px;
+  margin-left: 0;
+  padding: 0 8px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: 10px;
-  transition: background-color 0.2s, color 0.2s, opacity 0.3s ease, left 0.3s ease;
-}
-
-.side-btn:hover {
-  background-color: var(--accent-color);
-  color: var(--accent-text);
-}
-
-#btn-side-right {
-  right: 0;
-  border-radius: 4px 0 0 4px;
-  border-right: none;
-}
-
-.side-btn.side-active {
-  background-color: var(--accent-color);
-  color: var(--accent-text);
-}
-
-.side-btn.side-hidden {
-  opacity: 0;
-  pointer-events: none;
+  border-radius: 5px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .12);
 }
 
 /* Outline Sidebar */
@@ -4433,7 +4431,7 @@ body.is-resizing .side-btn {
   body { height: auto !important; overflow: visible !important; background: white !important; }
 
   header, .toolbar, .editor-pane, .resizer, .outline-sidebar, .outline-resizer,
-  .side-btn, .scroll-top-btn, .toast, footer, .statusbar,
+  .scroll-top-btn, .toast, footer, .statusbar,
   #update-status, .dropdown-menu, .dropdown-backdrop, #toast-container,
   #find-panel, #preview-find-panel { display: none !important; }
 

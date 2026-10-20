@@ -50,7 +50,8 @@ The world isn't short of Markdown editors. But most fall into one of two camps: 
 > vsnote lands right in the sweet spot between heavyweight IDEs and barebones notepads — nailing the things writers care about most.
 
 - ⚡ **Blazing fast & lightweight**: Built on **Rust + Tauri v2** (native WebView), ~**7MB** installer, **<50MB** RAM, launches in under a second — 4/5 less memory than Electron apps.
-- 👁️ **Live WYSIWYG preview**: Write on the left, see it render on the right. Editor and preview scroll auto-synced — no window switching.
+- 👁️ **Live WYSIWYG preview**: Write on the left, see it render on the right. Editor and preview scroll auto-synced — no window switching. One-click preview-only reading mode; collapsible split preview that restores your last pane width on expand.
+- 📄 **Plain-text file editing**: `.txt` / `.log` and other non-Markdown files open as plain text — no syntax rendering or preview layout, Enter never continues lists, format toolbar auto-hidden, original line endings (CRLF / LF) preserved on save. Code files like `.js` / `.json` / `.py` keep their own syntax highlighting; plain-text mode can be turned off in Settings.
 - 🧭 **Smart outline navigation**: Auto-parses heading hierarchy, one click to any chapter. Never get lost in long docs.
 - 📐 **Built-in KaTeX math**: Inline formulas, display blocks, matrices, equation systems — papers, notes, formulas all handled.
 - 📊 **Built-in Mermaid diagrams**: Flowcharts, sequence diagrams, Gantt charts, class diagrams, state diagrams… **draw with code, auto-adapts to light/dark theme**.
@@ -78,6 +79,8 @@ This project is based on [TizuMark v1.1.0](https://github.com/tizuio/TizuMark). 
   - **Reveal current file** in the file tree with one click.
 - 📝 **Auto-append extension**: Newly created files without an extension get `.md` appended automatically.
 - 🔗 **Click-to-open links in the editor**: http/https links in the editor are directly clickable.
+- 📄 **Plain-text file support**: `.txt` / `.log` and other non-Markdown files open as plain text (no Markdown highlighting or layout, format toolbar hidden, original CRLF / LF line endings preserved); `.txt` file association registered on install. Code files keep their own syntax highlighting; plain-text mode can be disabled in `Settings → Behavior`.
+- 🔀 **Preview collapse restores pane width**: Collapsing and re-expanding the preview restores your last dragged split-pane width instead of resetting to the default 50/50.
 - 📭 **Empty state after closing all tabs**: No forced auto-created blank document — the editor switches to read-only with a "no file open" hint.
 
 ### Behavior Changes
@@ -105,11 +108,12 @@ This project is based on [TizuMark v1.1.0](https://github.com/tizuio/TizuMark). 
 | Image paste, auto-dedup (MD5) | Clickable task-list checkboxes | Custom image asset path |
 | Insert menu (tables, callouts, TOC) | Auto width/height on image insert | |
 | Click-to-open links in editor | | |
+| Plain-text mode (.txt / .log) | Preview-only mode + collapsible preview | |
 
 | ⚡ Productivity | 🎨 Style | 🔧 Power |
 |---|---|---|
 | Outline sidebar — jump anywhere | Light / Dark / Follow System | CLI file opening |
-| Folder workspace (sidebar file tree) | Font size, line height, max width | File association: .md, .markdown |
+| Folder workspace (sidebar file tree) | Font size, line height, max width | File association: .md, .markdown, .txt |
 | Cross-file search (regex + directory) | Tab width, word wrap toggle | Recently opened files list |
 | Tab drag-to-reorder | Code block line numbers / auto-wrap | Unsaved-state markers + close prompt |
 | Drag & drop, batch file open | Fully rebindable shortcuts | Close behavior options |
@@ -244,7 +248,7 @@ Click "Restore Default" in `File → Settings` or `File → Keyboard Shortcuts`.
 <details open>
 <summary><b>What file formats are supported?</b></summary>
 
-`.md`, `.markdown`, `.txt`. More coming.
+`.md`, `.markdown`; `.txt` / `.log` open in plain-text mode, code files like `.js` / `.json` keep their own syntax highlighting. More coming.
 </details>
 
 <details open>

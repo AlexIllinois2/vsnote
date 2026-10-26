@@ -1,7 +1,8 @@
 use std::fs;
 use encoding_rs::GB18030;
 use std::sync::Mutex;
-use notify::{Watcher, RecursiveMode, RecommendedWatcher, Config as NotifyConfig, Event as NotifyEvent};
+use notify::{Watcher, RecursiveMode, RecommendedWatcher, Config as NotifyConfig, Event as NotifyEvent, EventKind as NotifyEventKind};
+use notify::event::ModifyKind as NotifyModifyKind;
 use tauri::{Emitter, Manager};
 use tauri::path::BaseDirectory;
 use tauri::WindowEvent;
@@ -831,6 +832,12 @@ fn move_path(from: String, to: String) -> Result<(), String> {
 
 // 工作区文件监听：监听整棵目录树，外部（资源管理器等）增删目录/文件时向前端广播 folder-changed 事件，
 // 前端防抖后重建文件树。监听句柄存入托管状态，重复监听或关闭文件夹时会先丢弃旧句柄。
+//
+// 只广播结构性变化（新建 / 删除 / 重命名）：内容写入、元数据变更（atime/mtime——读文件也会
+// 更新 atime）、.git 内部高频读写（git 自动同步每次 commit/pull 都会写 .git）都只会触发一次
+// 无意义的整树重建（列表闪烁、滚动位置丢失），对可见的树结构没有影响。
+// Windows 上内容写入只有 FILE_ACTION_MODIFIED → Modify(Any)，与元数据变更无法区分；
+// macOS fsevent 粒度粗，重命名也可能只报 Modify(Any)，故 Modify(Any) 一并保留。
 struct WatcherState(pub Mutex<Option<RecommendedWatcher>>);
 
 #[tauri::command]
@@ -848,8 +855,22 @@ fn watch_folder(path: String, app: tauri::AppHandle) -> Result<(), String> {
     let app_handle = app.clone();
     let mut watcher = RecommendedWatcher::new(
         move |res: notify::Result<NotifyEvent>| {
-            if res.is_ok() {
-                let _ = app_handle.emit("folder-changed", ());
+            if let Ok(event) = res {
+                let structural = matches!(
+                    event.kind,
+                    NotifyEventKind::Create(_)
+                        | NotifyEventKind::Remove(_)
+                        | NotifyEventKind::Modify(NotifyModifyKind::Name(_))
+                        | NotifyEventKind::Modify(NotifyModifyKind::Any)
+                );
+                // .git 内部对象/索引/锁文件的新建删除对笔记树是纯噪音（git 自动同步高频触发）
+                let in_git_dir = event
+                    .paths
+                    .iter()
+                    .any(|p| p.components().any(|c| c.as_os_str() == ".git"));
+                if structural && !in_git_dir {
+                    let _ = app_handle.emit("folder-changed", ());
+                }
             }
         },
         NotifyConfig::default(),

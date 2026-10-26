@@ -7411,6 +7411,9 @@ class MarkdownEditor {
   async renderFolderTree() {
     const treeEl = document.getElementById('folder-tree');
     if (!treeEl) return;
+    // innerHTML 清空会重置滚动位置；folder-changed 触发的重建即使内容无变化也会
+    // 让左侧列表跳回顶部，先记下 scrollTop，重建完成后恢复。
+    const keepScroll = treeEl.scrollTop;
     const locateEl = document.getElementById('folder-locate');
     const pathEl = document.getElementById('folder-path');
     treeEl.innerHTML = '';
@@ -7425,6 +7428,7 @@ class MarkdownEditor {
       return;
     }
     await this.renderFolderLevel(this.workspaceFolder, treeEl, 0);
+    treeEl.scrollTop = keepScroll;
   }
 
   async renderFolderLevel(dirPath, containerEl, depth) {

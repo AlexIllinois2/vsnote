@@ -38,15 +38,15 @@ test('COMMANDS 集合 == lib.rs generate_handler! 注册集合（C17，前后端
   const expected = [...TauriApi.COMMANDS].sort();
   assert.deepEqual(names, expected,
     `前后端命令集合必须一致。差异：${JSON.stringify(names)} vs ${JSON.stringify(expected)}`);
-  assert.equal(expected.length, 36,
-    `命令数应为 36（文件树右键 5 个 + SQLite 工作区 6 个 + Git 同步 6 个），实际 ${expected.length}`);
-  // 数量单独断言后，再锁住「db 密码命令与 Git 冲突处理命令」都还在，避免只改数字不改语义
+  assert.equal(expected.length, 34,
+    `命令数应为 34（文件树右键 5 个 + SQLite 工作区 6 个 + Git 同步 4 个），实际 ${expected.length}`);
+  // 数量单独断言后，再锁住「db 密码命令与 Git 状态命令」都还在，避免只改数字不改语义
   for (const cmd of ['db_remember_password', 'db_forget_password']) {
     assert.ok(expected.includes(cmd), `COMMANDS 应包含 ${cmd}`);
     assert.ok(names.includes(cmd), `lib.rs generate_handler! 应注册 ${cmd}`);
   }
-  // Git 冲突处理三件套（自动合并不了时提示用户介入）
-  for (const cmd of ['git_status', 'git_resolve_conflicts', 'git_abort_merge']) {
+  // Git 同步：冲突一律原样保留，不再提供自动解决 / 放弃合并命令
+  for (const cmd of ['git_status', 'git_auto_sync', 'git_auto_pull']) {
     assert.ok(expected.includes(cmd), `COMMANDS 应包含 ${cmd}`);
     assert.ok(names.includes(cmd), `lib.rs generate_handler! 应注册 ${cmd}`);
   }

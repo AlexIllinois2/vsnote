@@ -1014,19 +1014,16 @@ async fn export_to_folder(src: String, dest: String) -> Result<serde_json::Value
 // ── Git 自动同步（仅真实文件夹 git 仓库工作区）────────────────────────
 // 通过系统 git CLI 执行（复用用户既有凭据/代理配置），不引入 git2 依赖。
 //
-// 同步语义（用户契约，勿回退成 rebase）：
+// 同步语义（用户契约，勿回退成 rebase / 勿自动解决冲突）：
 //   ① 本地改动先 commit —— 保住本地成果，并为后续合并提供干净基线；
-//   ② 再 pull —— 用 merge（--no-rebase）而非 rebase：不改写已推送历史，
-//      非冲突改动由 git 自动合并，真冲突时冲突文件可被精确定位；
-//   ③ 冲突按策略处理：
-//        markers（默认）能合并的 git 自动合并，合不了的写成 git 标准冲突文件——
-//                文件名保持原样，内容带 <<<<<<< / ======= / >>>>>>> 标记，交给用户在编辑器里改；
-//        union    冲突块两侧都保留（git merge-file --union），不留标记；
-//        ours/theirs 冲突块整体取本地 / 远端；
-//   ④ 最后 push —— 先拉后推，避免 non-fast-forward 被远端拒绝；
-//   ⑤ 自动解决失败（如二进制文件）或策略为 markers：保留冲突现场（MERGE_HEAD + 冲突标记），
-//      把冲突文件列表回传前端，由 UI 提示用户介入。用户改完保存后再次同步，
-//      ⓿ 分支会检测到「合并中但无冲突」并自动补上合并提交。
+//   ② fetch 后 merge（不用 pull --rebase）—— 不改写已推送历史，非冲突改动由 git 自动合并；
+//   ③ 真冲突时不做任何自动解决、不弹窗：git 写出的冲突标记原样留在文件里
+//      （<<<<<<< / ======= / >>>>>>>），直接 add -A + 合并提交，冲突内容随提交一起保留；
+//   ④ 最后 push —— 冲突内容已提交，直接推送；
+//   ⑤ 若 push 因远端再次前进被拒：重新 fetch → merge（仍有冲突继续原样保留后提交）→ push，
+//      最多重试 GIT_SYNC_MAX_ATTEMPTS 次。全程严格按 commit → fetch → merge → push 顺序。
+
+const GIT_SYNC_MAX_ATTEMPTS: usize = 3;
 
 fn run_git(dir: &str, args: &[&str]) -> Result<std::process::Output, String> {
     std::process::Command::new("git")
@@ -1206,70 +1203,30 @@ fn git_ahead_behind(dir: &str) -> (u32, u32) {
     (ahead, behind)
 }
 
-// 冲突文件按 union 合并：取 :1(base) :2(ours) :3(theirs) 三阶段，用 git merge-file --union
-// 生成「两侧改动都保留」的结果（比保留单侧更适合笔记类文本）。失败返回 false 交回上层。
-fn git_resolve_union(dir: &str, file: &str) -> Result<bool, String> {
-    let show = |stage: u8| -> Option<Vec<u8>> {
-        let o = run_git(dir, &["show", &format!(":{stage}:{file}")]).ok()?;
-        if o.status.success() { Some(o.stdout) } else { None }
+// 把工作区当前内容原样暂存并提交：冲突标记不解决、不删改，随提交一起保留。
+// 合并中（MERGE_HEAD 存在）用 --no-edit 生成合并提交；否则用给定 message。
+// 无变更时返回 false，不算错误。
+fn git_commit_all(dir: &str, message: &str) -> Result<bool, String> {
+    let _ = run_git(dir, &["add", "-A"])?;
+    let (merging, _) = git_op_in_progress(dir);
+    let c = if merging {
+        run_git(dir, &["commit", "--no-edit"])?
+    } else {
+        run_git(dir, &["commit", "-m", message])?
     };
-    let (ours, theirs) = match (show(2), show(3)) {
-        (Some(a), Some(b)) => (a, b),
-        _ => return Ok(false),
-    };
-    // 二进制（含 NUL）无法按行合并，交回上层按 manual 处理
-    if ours.iter().any(|&b| b == 0) || theirs.iter().any(|&b| b == 0) {
+    if c.status.success() {
+        return Ok(true);
+    }
+    let out = git_text(&c);
+    if out.contains("nothing to commit")
+        || out.contains("no changes added")
+        || out.contains("nothing added to commit")
+    {
         return Ok(false);
     }
-    let base = show(1).unwrap_or_default();
-    let tmp = std::env::temp_dir().join(format!(
-        "vsnote-git-merge-{}-{}",
-        std::process::id(),
-        file.replace(&['/', '\\', ':'][..], "_")
-    ));
-    std::fs::create_dir_all(&tmp).map_err(|e| format!("创建临时目录失败: {e}"))?;
-    let p_ours = tmp.join("ours");
-    let p_base = tmp.join("base");
-    let p_theirs = tmp.join("theirs");
-    std::fs::write(&p_ours, &ours).map_err(|e| format!("写入临时文件失败: {e}"))?;
-    std::fs::write(&p_base, &base).map_err(|e| format!("写入临时文件失败: {e}"))?;
-    std::fs::write(&p_theirs, &theirs).map_err(|e| format!("写入临时文件失败: {e}"))?;
-
-    let m = std::process::Command::new("git")
-        .args(["merge-file", "--union", "-p"])
-        .arg(&p_ours)
-        .arg(&p_base)
-        .arg(&p_theirs)
-        .current_dir(dir)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .output()
-        .map_err(|e| format!("无法运行 git merge-file: {e}"))?;
-
-    let merged = m.stdout;
-    let ok = if merged.is_empty() && !ours.is_empty() {
-        false
-    } else {
-        let target = std::path::Path::new(dir).join(file);
-        if let Some(parent) = target.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        std::fs::write(&target, &merged).is_ok()
-    };
-    let _ = std::fs::remove_dir_all(&tmp);
-    Ok(ok)
-}
-
-// 策略含义：
-//   markers —— 能合并的由 git 自动合并，合不了的写 git 标准冲突标记（<<<<<<< / ======= / >>>>>>>），
-//              文件名保持不变，交给用户在编辑器里改（默认）；manual 是它的旧名，等价。
-//   union   —— 冲突块两侧都保留（git merge-file --union），不留标记
-//   ours/theirs —— 冲突块整体取本地 / 远端
-fn git_keep_markers(strategy: &str) -> bool {
-    strategy == "markers" || strategy == "manual"
-}
-
-fn git_default_strategy(strategy: &str) -> String {
-    if strategy.is_empty() { "markers".to_string() } else { strategy.to_string() }
+    Err(format!(
+        "git commit 失败: {out}（若提示身份未配置，请先执行 git config --global user.name / user.email）"
+    ))
 }
 
 // 确保冲突文件里真的带 git 标准冲突标记。正常 git merge 已经写好了；
@@ -1296,8 +1253,7 @@ fn git_ensure_conflict_markers(dir: &str, files: &[String]) -> Result<usize, Str
 }
 
 // 冲突文件的工作区内容是否仍带 git 标准冲突标记（<<<<<<< ）。
-// 读不到 / 二进制（含 NUL）按「仍冲突」处理：二进制写不了标记，交给用户在弹窗里选
-// union/ours/theirs，避免静默把某一侧内容提交进合并。
+// 读不到 / 二进制（含 NUL）按「仍冲突」处理：二进制写不了标记，保持原样提交，避免静默丢弃某一侧。
 fn file_has_conflict_markers(dir: &str, file: &str) -> bool {
     let p = std::path::Path::new(dir).join(file);
     match std::fs::read(&p) {
@@ -1328,7 +1284,7 @@ fn conflict_resolution_is_genuine(dir: &str, file: &str) -> Result<bool, String>
         (Some(a), Some(b)) => (a, b),
         _ => return Ok(true),
     };
-    // 二进制（含 NUL）不按文本合并判定，走弹窗人工选择
+    // 二进制（含 NUL）不按文本合并判定，按「已解决」处理（保持原样提交）
     if ours.iter().any(|&b| b == 0) || theirs.iter().any(|&b| b == 0) {
         return Ok(true);
     }
@@ -1393,88 +1349,59 @@ fn restore_conflict_markers_for_fake(dir: &str, files: &[String]) {
     }
 }
 
-// 按策略解决一批冲突文件（解决后逐个 add，但不提交，交由调用方完成合并提交）
-fn git_auto_resolve(dir: &str, strategy: &str, files: &[String]) -> Result<bool, String> {
-    for f in files {
-        let ok = match strategy {
-            "ours" => run_git(dir, &["checkout", "--ours", "--", f])?.status.success(),
-            "theirs" => run_git(dir, &["checkout", "--theirs", "--", f])?.status.success(),
-            "union" => git_resolve_union(dir, f)?,
-            _ => false,
-        };
-        if !ok { return Ok(false); }
-        let a = run_git(dir, &["add", "--", f])?;
-        if !a.status.success() { return Ok(false); }
-    }
-    Ok(true)
+// merge 的三种结局
+enum GitMergeOutcome {
+    Clean,                 // 合并成功（含 fast-forward / 自动合并 / 已是最新）
+    NoUpstream,            // 无远端或无上游分支，跳过
+    Conflicted(Vec<String>), // 有冲突：冲突文件列表，内容原样保留（不做自动解决）
 }
 
-// pull 的四种结局
-enum GitPullOutcome {
-    Clean,                  // 拉取成功（含 fast-forward / 自动合并 / 已是最新）
-    NoUpstream,             // 无远端或无上游分支，跳过
-    AutoResolved(Vec<String>), // 有冲突但已按策略自动解决并合并提交
-    Conflict(Vec<String>),  // 冲突无法自动解决，保留现场等用户
-}
-
-// 拉取并合并（--no-rebase）：真冲突时按 strategy 处理
-fn git_pull_merge(dir: &str, strategy: &str) -> Result<GitPullOutcome, String> {
-    // fetch 失败不致命（离线场景），交给 pull 再给出最终结论
-    let _ = run_git(dir, &["fetch", "--all", "--tags"]);
-
-    let p = if git_has_upstream(dir) {
-        run_git(dir, &["pull", "--no-rebase", "--no-edit"])?
+// fetch 后 merge（普通合并，不改写已推送历史）。
+// 有冲突时返回冲突文件列表，由调用方原样保留（add + commit），不做任何自动解决。
+fn git_fetch_merge(dir: &str) -> Result<GitMergeOutcome, String> {
+    let merge = if git_has_upstream(dir) {
+        // 拉最新远端引用；离线等场景 fetch 失败不致命，merge 会给出最终结论
+        let _ = run_git(dir, &["fetch", "--all", "--tags"]);
+        run_git(dir, &["merge", "--no-edit", "@{u}"])?
     } else {
         let remote = git_default_remote(dir);
         let branch = git_branch(dir);
         if branch.is_empty() || branch == "HEAD" {
-            return Ok(GitPullOutcome::NoUpstream);
+            return Ok(GitMergeOutcome::NoUpstream);
         }
-        run_git(dir, &["pull", "--no-rebase", "--no-edit", &remote, &branch])?
+        let f = run_git(dir, &["fetch", &remote, &branch])?;
+        if !f.status.success() {
+            let low = git_lower(&f);
+            if low.contains("couldn't find remote ref") || low.contains("no such ref") {
+                return Ok(GitMergeOutcome::NoUpstream);
+            }
+            return Err(format!("git fetch 失败: {}", git_text(&f)));
+        }
+        run_git(dir, &["merge", "--no-edit", "FETCH_HEAD"])?
     };
 
-    if p.status.success() {
-        return Ok(GitPullOutcome::Clean);
+    if merge.status.success() {
+        return Ok(GitMergeOutcome::Clean);
     }
 
     let conflicts = git_conflicts(dir)?;
     if !conflicts.is_empty() {
-        if git_keep_markers(strategy) {
-            // 保留 git 标准冲突文件（文件名不变、内容带冲突标记），交给用户在编辑器里解决
-            let _ = git_ensure_conflict_markers(dir, &conflicts);
-            return Ok(GitPullOutcome::Conflict(conflicts));
-        }
-        if git_auto_resolve(dir, strategy, &conflicts)? {
-            let _ = run_git(dir, &["add", "-A"])?;
-            // 处于合并中：--no-edit 生成合并提交；否则兜底给一条普通提交
-            let c = run_git(dir, &["commit", "--no-edit"])?;
-            if !c.status.success() {
-                let c2 = run_git(dir, &["commit", "-m", "vsnote: 自动合并远端改动"])?;
-                if !c2.status.success() {
-                    return Ok(GitPullOutcome::Conflict(git_conflicts(dir)?));
-                }
-            }
-            let left = git_conflicts(dir)?;
-            if !left.is_empty() {
-                return Ok(GitPullOutcome::Conflict(left));
-            }
-            return Ok(GitPullOutcome::AutoResolved(conflicts));
-        }
-        return Ok(GitPullOutcome::Conflict(conflicts));
+        return Ok(GitMergeOutcome::Conflicted(conflicts));
     }
 
-    let low = git_lower(&p);
+    let low = git_lower(&merge);
     if low.contains("no tracking information")
         || low.contains("no upstream")
         || low.contains("couldn't find remote ref")
         || low.contains("no such ref was fetched")
+        || low.contains("not something we can merge")
     {
-        return Ok(GitPullOutcome::NoUpstream);
+        return Ok(GitMergeOutcome::NoUpstream);
     }
     if low.contains("already up to date") || low.contains("already up-to-date") {
-        return Ok(GitPullOutcome::Clean);
+        return Ok(GitMergeOutcome::Clean);
     }
-    Err(format!("git pull 失败: {}", git_text(&p)))
+    Err(format!("git merge 失败: {}", git_text(&merge)))
 }
 
 // 推送；无 upstream 时补 -u 建立追踪（首次推送）
@@ -1496,6 +1423,15 @@ fn git_push(dir: &str) -> Result<(), String> {
         }
     }
     Err(format!("git push 失败: {}", git_text(&p)))
+}
+
+// push 被拒是否因为远端又有新提交（non-fast-forward / fetch first），可重新 fetch+merge 后重推。
+fn git_push_rejected(err: &str) -> bool {
+    let low = err.to_lowercase();
+    low.contains("non-fast-forward")
+        || low.contains("fetch first")
+        || low.contains("rejected")
+        || low.contains("cannot lock ref")
 }
 
 #[tauri::command]
@@ -1533,308 +1469,172 @@ async fn git_status(path: String) -> Result<serde_json::Value, String> {
     .map_err(|e| e.to_string())?
 }
 
-// 完整同步：commit（本地改动）→ pull（merge，冲突按策略处理）→ push。
+// 完整同步：commit（本地改动）→ fetch → merge（冲突原样保留并提交）→ push。
+// push 因远端再次前进被拒时，重新 fetch → merge（仍有冲突继续原样保留后提交）→ push。
+// 不做任何自动冲突解决、不弹窗；冲突标记始终原样留在文件里随提交推送。
 // 无远端的本地仓库只做本地 commit。commit 无变更不算错误。
 #[tauri::command]
-async fn git_auto_sync(path: String, message: String, strategy: String) -> Result<serde_json::Value, String> {
+async fn git_auto_sync(path: String, message: String) -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         if !is_git_repo(&path) {
             return Err("不是 git 仓库".to_string());
         }
-        let strategy = git_default_strategy(&strategy);
 
-        // ⓿ 清理历史遗留的 rebase 状态（旧版本 --rebase 中断可能留下）
-        let (merging, rebasing) = git_op_in_progress(&path);
+        // ⓿ 清理旧版本 --rebase 中断留下的状态
+        let (_, rebasing) = git_op_in_progress(&path);
         if rebasing {
             let _ = run_git(&path, &["rebase", "--abort"]);
         }
-        // 已存在未解决冲突时的处理：
-        //   - 合并进行中，且用户真解决了（文件无 <<<<<<<，且用三阶段重放验证过：
-        //     工作区内容与 :3(theirs) 再合并一次不再冲突）→ 暂存并补合并提交，
-        //     随后继续正常的 ❶❸ 流程（拉取 / 推送）；
-        //   - 假解决（文件无标记，但并未吸纳 theirs 的改动——典型是用户没看到标记、
-        //     自动保存/Ctrl+S 把合并前的编辑器缓冲区写回）→ 还原冲突标记后重新上报，
-        //     绝不静默补合并提交（否则远端改动被丢：重启后冲突行邻近的行丢一半）；
-        //   - 只解决了一部分：先把已改好的暂存（避免被弹窗里的 union/ours/theirs 覆盖），
-        //     只把还带标记的上报 UI；
-        //   - 仍全带标记 / 二进制（写不了标记）/ 非合并态的残留冲突 → 不叠加操作，
-        //     上报 UI 让用户选保留方式（union/ours/theirs）或继续手改。
-        // 只凭 git status 的 U 状态码判断是不够的：用户改的是工作区文件、没有 git add，
-        // 索引里会一直是 UU，必须再看文件内容里标记是否已被删掉；而「标记被删掉」本身
-        // 也不够——直接保存同样无标记，所以再加一层三阶段重放验证（见
-        // conflict_resolution_is_genuine）。
+
+        let mut committed = false;
+        let mut kept_conflicts: Vec<String> = Vec::new();
+
+        // ⓿ 上次遗留的合并现场：先把被编辑器写掉的冲突标记还原（避免静默丢弃远端改动），
+        //    再把当前内容原样提交完成合并；绝不自动解决冲突、不弹窗。
         let pending = git_conflicts(&path)?;
-        let mut finished_merge = false;
+        let (merging, _) = git_op_in_progress(&path);
         if !pending.is_empty() {
-            let mut resolved_by_user: Vec<String> = Vec::new();
-            let mut still_marked: Vec<String> = Vec::new();
-            for f in &pending {
-                if file_has_conflict_markers(&path, f) {
-                    still_marked.push(f.clone());
-                } else {
-                    resolved_by_user.push(f.clone());
-                }
-            }
             if merging {
-                // 无标记 ≠ 已解决：自动保存 / Ctrl+S 会把合并前的编辑器缓冲区原样写回，
-                // 文件同样不含 <<<<<<<，但远端那一侧改动并未被吸纳。逐个用三阶段重放验证，
-                // 假解决绝不静默补合并提交——否则远端改动被静默丢弃，用户视角就是
-                // 「删了某行当时看着没事，重启后相邻的第一行/第三行丢一半」。
-                let mut genuine: Vec<String> = Vec::new();
+                // 无标记 ≠ 已解决：自动保存 / Ctrl+S 可能把合并前的编辑器缓冲区原样写回，
+                // 文件不含 <<<<<<<，但远端改动并未被吸纳。用三阶段重放验证，假解决时还原标记，
+                // 保证冲突内容原样保留，而不是静默丢弃远端。
+                let no_markers: Vec<String> = pending
+                    .iter()
+                    .filter(|f| !file_has_conflict_markers(&path, f))
+                    .cloned()
+                    .collect();
                 let mut fake: Vec<String> = Vec::new();
-                for f in &resolved_by_user {
-                    if conflict_resolution_is_genuine(&path, f)? {
-                        genuine.push(f.clone());
-                    } else {
+                for f in &no_markers {
+                    if !conflict_resolution_is_genuine(&path, f)? {
                         fake.push(f.clone());
                     }
                 }
-                if !fake.is_empty() {
-                    // 假解决：还原冲突标记（仅 LF 纯净文件），让用户在编辑器里看到
-                    // 真实冲突后真正解决；合并现场（MERGE_HEAD）不动，稍后重新上报
-                    restore_conflict_markers_for_fake(&path, &fake);
-                    let mut report = still_marked.clone();
-                    report.extend(fake.iter().cloned());
-                    return Ok(serde_json::json!({
-                        "conflict": true, "conflicts": report, "stage": "unresolved",
-                        "committed": false, "pulled": false, "pushed": false, "resolved": false,
-                        "fakeResolved": fake
-                    }));
-                }
-                if genuine.is_empty() {
-                    // 全部仍带标记，没有可暂存的已解决文件
-                    return Ok(serde_json::json!({
-                        "conflict": true, "conflicts": pending, "stage": "unresolved",
-                        "committed": false, "pulled": false, "pushed": false, "resolved": false
-                    }));
-                }
-                if still_marked.is_empty() {
-                    for f in &genuine {
-                        let a = run_git(&path, &["add", "--", f])?;
-                        if !a.status.success() {
-                            return Err(format!("git add 失败: {}（解决冲突后暂存失败）", git_text(&a)));
-                        }
-                    }
-                    let c = run_git(&path, &["commit", "--no-edit"])?;
-                    finished_merge = c.status.success();
-                } else {
-                    // 部分解决：暂存已改好的，只上报还带标记的，等用户把剩下的也改完
-                    for f in &genuine {
-                        let _ = run_git(&path, &["add", "--", f]);
-                    }
-                    return Ok(serde_json::json!({
-                        "conflict": true, "conflicts": still_marked, "stage": "unresolved",
-                        "committed": false, "pulled": false, "pushed": false, "resolved": false
-                    }));
-                }
-            } else {
-                return Ok(serde_json::json!({
-                    "conflict": true, "conflicts": pending, "stage": "unresolved",
-                    "committed": false, "pulled": false, "pushed": false, "resolved": false
-                }));
+                restore_conflict_markers_for_fake(&path, &fake);
             }
+            committed = git_commit_all(&path, &message)?;
+            kept_conflicts.extend(
+                pending
+                    .iter()
+                    .filter(|f| file_has_conflict_markers(&path, f))
+                    .cloned(),
+            );
         } else if merging {
-            // 索引里已无冲突条目（用户可能已在外部 git add 过）→ 直接补合并提交
-            let c = run_git(&path, &["commit", "--no-edit"])?;
-            finished_merge = c.status.success();
+            // 索引里已无冲突条目（外部已 git add 过）→ 直接补合并提交
+            committed = git_commit_all(&path, &message)?;
         }
-
-        let remotes = git_remotes(&path)?;
-        let has_remote = !remotes.is_empty();
-        let mut committed = finished_merge; // 上面补的合并提交也算提交过
-        let mut pulled = false;
-        let mut pushed = false;
-        let mut resolved = false;
 
         // ❶ 本地改动先提交：保住本地成果，并为后续合并提供干净基线
-        let entries = git_status_entries(&path)?;
-        if !entries.is_empty() {
-            let _ = run_git(&path, &["add", "-A"])?;
-            let c = run_git(&path, &["commit", "-m", &message])?;
-            if c.status.success() {
-                committed = true;
-            } else {
-                let out = git_text(&c);
-                if !out.contains("nothing to commit")
-                    && !out.contains("no changes added")
-                    && !out.contains("nothing added to commit")
-                {
-                    return Err(format!(
-                        "git commit 失败: {out}（若提示身份未配置，请先执行 git config --global user.name / user.email）"
-                    ));
-                }
-            }
+        if !git_status_entries(&path)?.is_empty() {
+            committed = git_commit_all(&path, &message)? || committed;
         }
 
-        // ❷ 先拉：merge 合并远端改动
+        // ❷ fetch → merge → push：push 被远端拒绝（远端又有新提交）时重试
+        let has_remote = !git_remotes(&path)?.is_empty();
+        let mut pulled = false;
+        let mut pushed = false;
         if has_remote {
-            match git_pull_merge(&path, &strategy)? {
-                GitPullOutcome::Clean => { pulled = true; }
-                GitPullOutcome::NoUpstream => {}
-                GitPullOutcome::AutoResolved(files) => {
-                    pulled = true;
-                    resolved = true;
-                    let _ = files;
+            for attempt in 0..GIT_SYNC_MAX_ATTEMPTS {
+                match git_fetch_merge(&path)? {
+                    GitMergeOutcome::Clean => pulled = true,
+                    GitMergeOutcome::NoUpstream => {}
+                    GitMergeOutcome::Conflicted(files) => {
+                        pulled = true;
+                        // ❸ 冲突：不解决、不删改，原样保留冲突标记后暂存并提交
+                        committed = git_commit_all(&path, &message)? || committed;
+                        kept_conflicts.extend(files);
+                    }
                 }
-                GitPullOutcome::Conflict(files) => {
-                    return Ok(serde_json::json!({
-                        "conflict": true, "conflicts": files, "stage": "merge",
-                        "committed": committed, "pulled": false, "pushed": false,
-                        "resolved": false, "strategy": strategy,
-                        "markers": git_keep_markers(&strategy)
-                    }));
+                match git_push(&path) {
+                    Ok(()) => {
+                        pushed = true;
+                        break;
+                    }
+                    Err(e) if attempt + 1 < GIT_SYNC_MAX_ATTEMPTS && git_push_rejected(&e) => {
+                        // 远端在本次 fetch 后又有新提交：重新 fetch → merge → 保留冲突 → commit → push
+                        continue;
+                    }
+                    Err(e) => return Err(e),
                 }
             }
         }
 
-        // ❸ 后推：先拉后推，避免被远端以 non-fast-forward 拒绝。
-        //    定时同步无变更时不空推，省掉一次无意义的网络往返与凭据询问。
-        if has_remote {
-            let (ahead, _) = git_ahead_behind(&path);
-            if ahead > 0 || !git_has_upstream(&path) {
-                git_push(&path)?;
-                pushed = true;
-            }
-        }
-
+        kept_conflicts.sort();
+        kept_conflicts.dedup();
         Ok(serde_json::json!({
-            "conflict": false, "conflicts": [], "committed": committed,
-            "pulled": pulled, "pushed": pushed, "resolved": resolved,
-            "noRemote": !has_remote, "strategy": strategy
+            "committed": committed,
+            "pulled": pulled,
+            "pushed": pushed,
+            "noRemote": !has_remote,
+            "keptConflicts": kept_conflicts
         }))
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
-// 只拉取（打开工作区 / 手动拉取）：工作区脏则跳过，交给定时同步先提交再拉。
-// 返回 updated 表示 HEAD 是否前进；conflict=true 时需 UI 提示用户解决。
+// 只拉取（打开工作区 / 手动拉取）：有遗留冲突先原样保留并提交合并；
+// 工作区仍有其他脏改动则跳过，交给定时同步先提交再拉。
+// 返回 updated 表示 HEAD 是否前进；keptConflicts 为原样保留的冲突文件列表（不弹窗）。
 #[tauri::command]
-async fn git_auto_pull(path: String, strategy: String) -> Result<serde_json::Value, String> {
+async fn git_auto_pull(path: String) -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         if !is_git_repo(&path) {
             return Err("不是 git 仓库".to_string());
         }
-        let strategy = git_default_strategy(&strategy);
-        let remotes = git_remotes(&path)?;
-        if remotes.is_empty() {
+        if git_remotes(&path)?.is_empty() {
             return Ok(serde_json::json!({ "skipped": true, "reason": "noRemote", "updated": false }));
         }
-        let entries = git_status_entries(&path)?;
-        if !git_conflicts_of(&entries).is_empty() {
+
+        let mut committed = false;
+        let mut kept_conflicts: Vec<String> = Vec::new();
+        let pending = git_conflicts(&path)?;
+        let (merging, _) = git_op_in_progress(&path);
+        if !pending.is_empty() || merging {
+            // 原样保留冲突内容后完成合并提交，不做自动解决
+            committed = git_commit_all(&path, "vsnote: 原样保留冲突内容并合并远端")?;
+            kept_conflicts.extend(
+                pending
+                    .iter()
+                    .filter(|f| file_has_conflict_markers(&path, f))
+                    .cloned(),
+            );
+        }
+        if !git_status_entries(&path)?.is_empty() {
             return Ok(serde_json::json!({
-                "skipped": true, "reason": "conflict", "updated": false,
-                "conflict": true, "conflicts": git_conflicts_of(&entries)
+                "skipped": true, "reason": "dirty", "updated": committed,
+                "keptConflicts": kept_conflicts
             }));
         }
-        if !entries.is_empty() {
-            return Ok(serde_json::json!({ "skipped": true, "reason": "dirty", "updated": false }));
-        }
+
         let before = run_git(&path, &["rev-parse", "HEAD"]).map(|o| git_out(&o)).unwrap_or_default();
 
-        match git_pull_merge(&path, &strategy)? {
-            GitPullOutcome::Clean => {}
-            GitPullOutcome::NoUpstream => {
-                return Ok(serde_json::json!({ "skipped": true, "reason": "noUpstream", "updated": false }));
-            }
-            GitPullOutcome::AutoResolved(files) => {
+        match git_fetch_merge(&path)? {
+            GitMergeOutcome::Clean => {}
+            GitMergeOutcome::NoUpstream => {
                 return Ok(serde_json::json!({
-                    "skipped": false, "updated": true, "conflict": false,
-                    "resolved": true, "conflicts": files, "strategy": strategy
+                    "skipped": true, "reason": "noUpstream", "updated": committed,
+                    "keptConflicts": kept_conflicts
                 }));
             }
-            GitPullOutcome::Conflict(files) => {
+            GitMergeOutcome::Conflicted(files) => {
+                // 冲突原样保留后提交合并（推送交给后续完整同步）
+                committed = git_commit_all(&path, "vsnote: 原样保留冲突内容并合并远端")? || committed;
+                kept_conflicts.extend(files);
+                kept_conflicts.sort();
+                kept_conflicts.dedup();
                 return Ok(serde_json::json!({
-                    "skipped": false, "updated": false, "conflict": true, "conflicts": files
+                    "skipped": false, "updated": committed, "keptConflicts": kept_conflicts
                 }));
             }
         }
 
         let after = run_git(&path, &["rev-parse", "HEAD"]).map(|o| git_out(&o)).unwrap_or_default();
-        let updated = !after.is_empty() && before != after;
-        Ok(serde_json::json!({ "skipped": false, "updated": updated, "conflict": false }))
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-// 用户介入解决冲突：按 strategy 解决（union/ours/theirs）→ 合并提交 → 继续推送。
-// files 为空时自动取当前所有冲突文件。
-#[tauri::command]
-async fn git_resolve_conflicts(
-    path: String,
-    strategy: String,
-    files: Option<Vec<String>>,
-) -> Result<serde_json::Value, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        if !is_git_repo(&path) {
-            return Err("不是 git 仓库".to_string());
-        }
-        let target = match files {
-            Some(f) if !f.is_empty() => f,
-            _ => git_conflicts(&path)?,
-        };
-        if target.is_empty() {
-            return Ok(serde_json::json!({ "resolved": false, "reason": "noConflict" }));
-        }
-        if !git_auto_resolve(&path, &strategy, &target)? {
-            return Ok(serde_json::json!({
-                "resolved": false, "reason": "strategyFailed", "conflicts": git_conflicts(&path)?
-            }));
-        }
-        let _ = run_git(&path, &["add", "-A"])?;
-        let (merging, _) = git_op_in_progress(&path);
-        let c = if merging {
-            run_git(&path, &["commit", "--no-edit"])?
-        } else {
-            run_git(&path, &["commit", "-m", "vsnote: 解决合并冲突"])?
-        };
-        let committed = c.status.success();
-        let mut pushed = false;
-        let mut push_error: Option<String> = None;
-        if !git_remotes(&path)?.is_empty() {
-            match git_push(&path) {
-                Ok(()) => pushed = true,
-                Err(e) => push_error = Some(e),
-            }
-        }
+        let updated = committed || (!after.is_empty() && before != after);
+        kept_conflicts.sort();
+        kept_conflicts.dedup();
         Ok(serde_json::json!({
-            "resolved": true, "committed": committed, "pushed": pushed,
-            "pushError": push_error, "conflicts": git_conflicts(&path)?
+            "skipped": false, "updated": updated, "keptConflicts": kept_conflicts
         }))
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-// 放弃本次远端合并：回到合并前的本地提交，本地已提交内容不丢。
-// 无 MERGE_HEAD 但仍有冲突标记时（罕见）回退工作区到 HEAD。
-#[tauri::command]
-async fn git_abort_merge(path: String) -> Result<serde_json::Value, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        if !is_git_repo(&path) {
-            return Err("不是 git 仓库".to_string());
-        }
-        let (merging, rebasing) = git_op_in_progress(&path);
-        let has_conflicts = !git_conflicts(&path)?.is_empty();
-        if !merging && !has_conflicts {
-            return Ok(serde_json::json!({ "aborted": false, "reason": "noMerge" }));
-        }
-        if rebasing {
-            let _ = run_git(&path, &["rebase", "--abort"]);
-        }
-        if merging {
-            let a = run_git(&path, &["merge", "--abort"])?;
-            if !a.status.success() {
-                return Err(format!("git merge --abort 失败: {}", git_text(&a)));
-            }
-        } else {
-            let r = run_git(&path, &["reset", "--hard", "HEAD"])?;
-            if !r.status.success() {
-                return Err(format!("git reset --hard 失败: {}", git_text(&r)));
-            }
-        }
-        Ok(serde_json::json!({ "aborted": true, "conflicts": git_conflicts(&path)? }))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -2820,9 +2620,7 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             git_check,
             git_auto_sync,
             git_auto_pull,
-            git_status,
-            git_resolve_conflicts,
-            git_abort_merge
+            git_status
         ])
 }
 

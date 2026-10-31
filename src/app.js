@@ -491,28 +491,7 @@ const I18N = {
     gitSynced: 'Git 已自动提交并推送',
     gitPulled: '已拉取 Git 远端更新',
     gitSyncFailed: 'Git 同步失败',
-    gitConflictStrategy: 'Git 冲突处理',
-    gitConflictMarkers: '自动合并（冲突处写标记，我自己改）',
-    gitConflictUnion: '自动合并（冲突保留双方，不留标记）',
-    gitConflictOurs: '自动合并（冲突保留本地）',
-    gitConflictTheirs: '自动合并（冲突保留远端）',
-    gitConflictHint: '同步顺序：先提交本地改动 → 拉取并合并远端 → 推送。能合并的 git 直接合并，只有双方改到同一处才会冲突：默认在原文件里写入冲突标记让你自己改，也可改成自动保留双方 / 本地 / 远端。',
-    gitConflictTitle: 'Git 合并冲突',
-    gitConflictMsg: '这些文件本地和远端改了同一处，自动合并没能处理。请选择保留方式，或在外部编辑器改好后再次同步。',
-    gitConflictResolved: '冲突已解决，同步完成',
-    gitConflictResolveFailed: '冲突处理失败',
-    gitConflictAborted: '已放弃本次远端合并，本地提交保留',
-    gitConflictPrevUnresolved: '（上次冲突还没解决，本地提交已保留。）',
-    gitConflictMarkerHint: '文件里已写入 git 冲突标记（<<<<<<< HEAD / ======= / >>>>>>> 远端），文件名不变。在编辑器里删掉标记、改成你想要的内容后保存，下次同步会自动完成合并提交并推送。',
-    gitConflictFakeResolved: '检测到有冲突文件被直接保存过（没有真正合并远端改动，很可能是没看到标记就继续编辑并保存了）。冲突标记已还原，请点击顶部横幅的『重新加载』后查看标记并解决，或直接在下方选择保留方式。',
-    gitConflictOpenEditor: '打开冲突文件',
-    gitConflictOpenedHint: '已在编辑器打开冲突文件，改好后保存即可自动完成合并',
-    gitConflictPausedHint: '已暂停自动拉取，处理完冲突后用菜单「Git 同步」恢复',
-    gitConflictKeepUnion: '保留双方',
-    gitConflictKeepOurs: '保留本地',
-    gitConflictKeepTheirs: '保留远端',
-    gitConflictOpenFolder: '打开所在文件夹',
-    gitConflictAbortAction: '放弃本次合并',
+    gitConflictKept: '冲突内容已原样保留并推送',
     gitSyncMenu: 'Git 同步（提交·拉取·推送）',
     gitPullMenu: '拉取 Git 远端更新',
     autoSave: '自动保存',
@@ -921,28 +900,7 @@ const I18N = {
     gitSynced: 'Git auto committed and pushed',
     gitPulled: 'Pulled updates from Git remote',
     gitSyncFailed: 'Git sync failed',
-    gitConflictStrategy: 'Git Conflict Handling',
-    gitConflictMarkers: 'Auto merge (mark conflicts, I will edit)',
-    gitConflictUnion: 'Auto merge (keep both sides, no markers)',
-    gitConflictOurs: 'Auto merge (keep local)',
-    gitConflictTheirs: 'Auto merge (keep remote)',
-    gitConflictHint: 'Sync order: commit local changes → pull and merge remote → push. Git merges everything it can; only edits to the same lines conflict. By default conflict markers are written into the file for you to edit — or switch to auto keep both / local / remote.',
-    gitConflictTitle: 'Git Merge Conflict',
-    gitConflictMsg: 'Both local and remote changed the same lines in these files and auto merge could not handle it. Choose what to keep, or edit them externally and sync again.',
-    gitConflictResolved: 'Conflict resolved and synced',
-    gitConflictResolveFailed: 'Failed to resolve conflict',
-    gitConflictAborted: 'Remote merge aborted; local commits kept',
-    gitConflictPrevUnresolved: '(The previous conflict is still unresolved; local commits are kept.)',
-    gitConflictMarkerHint: 'Conflict markers (<<<<<<< HEAD / ======= / >>>>>>> remote) have been written into the files, with the filenames unchanged. Remove the markers, keep the content you want, and save — the next sync commits the merge and pushes automatically.',
-    gitConflictFakeResolved: 'A conflicted file was saved without a real merge (the remote changes were not incorporated — most likely the file was edited and saved without seeing the markers). The conflict markers have been restored: click "Reload" in the banner at the top to see and resolve them, or choose what to keep below.',
-    gitConflictOpenEditor: 'Open conflicted files',
-    gitConflictOpenedHint: 'Conflicted files opened in the editor — edit and save to finish the merge',
-    gitConflictPausedHint: 'Auto pull paused — use the menu item "Git Sync" after resolving the conflict',
-    gitConflictKeepUnion: 'Keep both',
-    gitConflictKeepOurs: 'Keep local',
-    gitConflictKeepTheirs: 'Keep remote',
-    gitConflictOpenFolder: 'Open folder',
-    gitConflictAbortAction: 'Abort merge',
+    gitConflictKept: 'Conflict content kept as-is and pushed',
     gitSyncMenu: 'Git Sync (commit · pull · push)',
     gitPullMenu: 'Pull Git remote updates',
     autoSave: 'Auto Save',
@@ -1254,12 +1212,6 @@ class MarkdownEditor {
     const plainTextHint = document.querySelector('#setting-plain-text-mode-hint .hint-text');
     if (plainTextHint) plainTextHint.textContent = t('plainTextModeHint');
     setRowLabel('set-git-autosync', t('gitAutoSync'));
-    setRowLabel('set-git-conflict', t('gitConflictStrategy'));
-    this._applyGitConflictOptionLabels();
-    const gitHint = document.querySelector('#setting-git-conflict-hint .hint-text');
-    if (gitHint) {
-      gitHint.textContent = t('gitConflictHint');
-    }
     setRowLabel('set-autosave', t('autoSave'));
     const autosaveSel = document.getElementById('set-autosave');
     if (autosaveSel) {
@@ -1604,7 +1556,6 @@ class MarkdownEditor {
       editorFont: '',
       previewFont: '',
       gitAutoSyncMinutes: 5,
-      gitConflictStrategy: 'markers',
       autoSave: 0,
       plainTextMode: true,
     };
@@ -1815,9 +1766,6 @@ class MarkdownEditor {
     document.getElementById('set-default-view').value = s.defaultView;
     document.getElementById('set-plain-text-mode').checked = s.plainTextMode;
     document.getElementById('set-git-autosync').value = String(s.gitAutoSyncMinutes ?? 5);
-    document.getElementById('set-git-conflict').value = s.gitConflictStrategy === 'manual'
-      ? 'markers'
-      : (s.gitConflictStrategy || 'markers');
     document.getElementById('set-autosave').value = String(s.autoSave ?? 0);
     document.getElementById('set-scroll-sync').checked = s.scrollSync;
     document.getElementById('set-code-line-numbers').checked = s.codeLineNumbers;
@@ -1914,12 +1862,6 @@ class MarkdownEditor {
       this.saveSettings();
       // 间隔变更即时生效（当前打开的是 git 工作区时重建定时器；0 关闭）
       this._startGitTimer();
-    });
-    document.getElementById('set-git-conflict').addEventListener('change', (e) => {
-      this.settings.gitConflictStrategy = e.target.value || 'markers';
-      this.saveSettings();
-      // 切回任一自动/半自动策略：解除用户放弃合并后的暂停
-      this._gitPullPaused = false;
     });
     document.getElementById('set-autosave').addEventListener('change', (e) => {
       this.settings.autoSave = Number(e.target.value) || 0;
@@ -2588,7 +2530,6 @@ class MarkdownEditor {
     document.getElementById('set-default-view').value = defaults.defaultView;
     document.getElementById('set-plain-text-mode').checked = defaults.plainTextMode;
     document.getElementById('set-git-autosync').value = String(defaults.gitAutoSyncMinutes);
-    document.getElementById('set-git-conflict').value = defaults.gitConflictStrategy || 'markers';
     document.getElementById('set-autosave').value = String(defaults.autoSave);
     this._cancelAutoSaveTimer();
     document.getElementById('set-scroll-sync').checked = defaults.scrollSync;
@@ -7036,41 +6977,15 @@ class MarkdownEditor {
 
   // ── Git 自动同步（仅真实文件夹且含 .git 的工作区；SQLite db 工作区不适用）──
   //
-  // 契约（用户要求，勿改回 rebase）：
-  //   ① 定时 + 保存后触发：提交本地改动 → 拉取并合并远端（先拉）→ 推送（后推）；
-  //   ② 拉取用 merge，非冲突改动由 git 自动合并，不改写已推送历史；
-  //   ③ 冲突按设置策略自动解决：union 保留双方 / ours 保留本地 / theirs 保留远端；
-  //   ④ 策略为 manual 或自动解决失败：保留冲突现场（冲突标记留在文件里），
-  //      弹出冲突文件列表让用户选保留方式、打开文件夹自行编辑，或放弃本次合并。
-
-  // markers（默认）：能合并的 git 自动合并，合不了的在原文件里写 git 标准冲突标记，
-  //                  文件名不变，用户在编辑器里改好后保存即可。
-  // union / ours / theirs：自动保留双方 / 本地 / 远端，不留标记。
-  gitConflictStrategy() {
-    const v = this.settings.gitConflictStrategy;
-    if (v === 'manual') return 'markers'; // 旧值兼容
-    return (v === 'ours' || v === 'theirs' || v === 'union' || v === 'markers') ? v : 'markers';
-  }
-
-  _applyGitConflictOptionLabels() {
-    const sel = document.getElementById('set-git-conflict');
-    if (!sel) return;
-    const map = {
-      markers: 'gitConflictMarkers',
-      union: 'gitConflictUnion',
-      ours: 'gitConflictOurs',
-      theirs: 'gitConflictTheirs',
-    };
-    for (const opt of sel.options) {
-      const key = map[opt.value];
-      if (key) opt.text = this.t(key);
-    }
-  }
+  // 契约（用户要求，勿改回 rebase、勿自动解决冲突）：
+  //   ① 定时 + 保存后触发：先提交本地改动 → fetch → merge → push；
+  //   ② merge 用 --no-rebase，非冲突改动由 git 自动合并，不改写已推送历史；
+  //   ③ 真冲突时不自动解决、不弹窗：git 写出的冲突标记原样留在文件里并随提交推送，
+  //      push 被远端拒绝时重新 fetch+merge，冲突仍原样保留后提交再推送。
 
   // 打开文件夹工作区后检测 git 仓库：先拉一次远端，再启动定时器
   async _initGitSync() {
     this._stopGitSync();
-    this._gitPullPaused = false;
     if (!this.workspaceFolder || this.isDbWorkspacePath(this.workspaceFolder)) return;
     try {
       this._gitRepo = await invoke('git_check', { path: this.workspaceFolder });
@@ -7079,16 +6994,6 @@ class MarkdownEditor {
     }
     this.updateWorkspaceMenuState();
     if (!this._gitRepo) return;
-    // 上次退出遗留的未解决冲突：先提示处理，再继续自动同步
-    try {
-      const st = await invoke('git_status', { path: this.workspaceFolder });
-      if (st && st.conflicts && st.conflicts.length) {
-        this._enqueueExternalChangeForGitConflicts(st.conflicts);
-        await this._handleGitConflict(st.conflicts, 'unresolved');
-      }
-    } catch (e) {
-      console.warn('[git-status]', e);
-    }
     this._runGitPull(); // 打开时先拉取一次远端更新（fire-and-forget）
     this._startGitTimer();
   }
@@ -7118,41 +7023,29 @@ class MarkdownEditor {
     this._gitPullTimer = setInterval(() => this.syncGit({ silent: true }), ms);
   }
 
-  // 完整同步：commit → pull(merge) → push。
-  // silent=true 定时场景（只在有实质结果时提示）；manual=true 菜单手动触发（忽略暂停并解除暂停）。
-  // 自动触发（保存防抖 / 定时）受「Git 自动同步」开关控制；手动触发只要是 git 仓库就允许——
-  // 用户把自动同步设为「禁用」时，菜单里的手动同步 / 拉取仍然可用。
-  // 返回后端结果对象；冲突时交给 _handleGitConflict 弹窗。
+  // 完整同步：commit → fetch → merge（冲突原样保留并提交）→ push。
+  // 不做任何自动冲突解决、不弹窗。silent=true 定时场景（只在有实质结果时提示）；
+  // manual=true 菜单手动触发。自动触发（保存防抖 / 定时）受「Git 自动同步」开关控制；
+  // 手动触发只要是 git 仓库就允许——用户把自动同步设为「禁用」时菜单里的手动同步 / 拉取仍然可用。
   async syncGit({ silent = false, manual = false } = {}) {
     const allowed = manual
       ? (!!this._gitRepo && !!this.workspaceFolder)
       : this.gitAutoSyncEnabled();
     if (!allowed || this._gitSyncing) return null;
-    // 用户放弃过一次远端合并：暂停自动同步，避免每次定时都撞同一处冲突
-    if (this._gitPullPaused && !manual) return null;
     this._gitSyncing = true;
     try {
       const res = await invoke('git_auto_sync', {
         path: this.workspaceFolder,
         message: 'vsnote: auto sync at ' + new Date().toLocaleString(),
-        strategy: this.gitConflictStrategy(),
       });
-      if (res && res.conflict) {
-        this._scheduleTreeRefresh(); // 冲突标记已写入文件，先让树反映出来
-        // 冲突文件若已打开：入队外部变更，让用户重载后看得到标记并真正解决
-        this._enqueueExternalChangeForGitConflicts(res.conflicts);
-        await this._handleGitConflict(res.conflicts, res.stage, !!res.fakeResolved);
-        return res;
-      }
-      if (res && (res.pulled || res.resolved)) this._scheduleTreeRefresh();
-      if (res && res.resolved) {
-        this._gitPullPaused = false;
-        this.setStatus(this.t('gitConflictResolved'));
+      const kept = res && Array.isArray(res.keptConflicts) ? res.keptConflicts : [];
+      if (res && (res.pulled || kept.length)) this._scheduleTreeRefresh();
+      if (kept.length) {
+        // 冲突标记已写入磁盘：已打开的标签页入队外部变更，重载后即可看到标记
+        this._enqueueExternalChangeForGitConflicts(kept);
+        this.setStatus(this.t('gitConflictKept'));
       } else if (!silent && res && (res.committed || res.pushed)) {
-        this._gitPullPaused = false;
         this.setStatus(this.t('gitSynced'));
-      } else if (manual && res && !res.conflict) {
-        this._gitPullPaused = false;
       }
       return res;
     } catch (e) {
@@ -7165,30 +7058,26 @@ class MarkdownEditor {
     }
   }
 
-  // 只拉取（打开工作区 / 菜单手动触发）：脏工作区交给定时同步先提交再拉。
-  // 失败静默，不打断写作。启动时的自动拉取受「Git 自动同步」开关控制；手动拉取只要是
-  // git 仓库就允许（自动同步设为「禁用」时菜单仍可用）。
+  // 只拉取（打开工作区 / 菜单手动触发）：脏工作区交给定时同步先提交再拉；
+  // 冲突同样原样保留并提交，不弹窗。失败静默，不打断写作。启动时的自动拉取受
+  // 「Git 自动同步」开关控制；手动拉取只要是 git 仓库就允许。
   async _runGitPull({ manual = false } = {}) {
     const allowed = manual
       ? (!!this._gitRepo && !!this.workspaceFolder)
       : this.gitAutoSyncEnabled();
     if (!allowed || this._gitSyncing) return null;
-    if (this._gitPullPaused && !manual) return null; // 用户放弃过合并，暂停自动拉取直到手动触发
     this._gitSyncing = true;
     try {
-      const res = await invoke('git_auto_pull', {
-        path: this.workspaceFolder,
-        strategy: this.gitConflictStrategy(),
-      });
-      if (res && res.conflict) {
+      const res = await invoke('git_auto_pull', { path: this.workspaceFolder });
+      const kept = res && Array.isArray(res.keptConflicts) ? res.keptConflicts : [];
+      if (res && (res.updated || kept.length)) {
         this._scheduleTreeRefresh();
-        this._enqueueExternalChangeForGitConflicts(res.conflicts);
-        await this._handleGitConflict(res.conflicts, 'merge');
-        return res;
-      }
-      if (res && (res.updated || res.resolved)) {
-        this._scheduleTreeRefresh();
-        this.setStatus(res.resolved ? this.t('gitConflictResolved') : this.t('gitPulled'));
+        if (kept.length) {
+          this._enqueueExternalChangeForGitConflicts(kept);
+          this.setStatus(this.t('gitConflictKept'));
+        } else {
+          this.setStatus(this.t('gitPulled'));
+        }
       }
       return res;
     } catch (e) {
@@ -7199,141 +7088,6 @@ class MarkdownEditor {
     } finally {
       this._gitSyncing = false;
     }
-  }
-
-  // 冲突提示：列出冲突文件，让用户选保留方式 / 打开文件夹自行编辑 / 放弃本次合并。
-  // 返回 'resolved' | 'aborted' | 'manual' | null（关闭对话框）。
-  // fakeResolved=true：检测到冲突文件被直接保存过（未真正合并远端改动），标记已还原，
-  // 文案引导用户先重载再看标记，或直接选保留方式。
-  async _handleGitConflict(conflicts, stage, fakeResolved = false) {
-    const files = Array.isArray(conflicts) ? conflicts : [];
-    const dialog = document.getElementById('git-conflict-dialog');
-    const msgEl = document.getElementById('git-conflict-message');
-    const listEl = document.getElementById('git-conflict-files');
-    const btnUnion = document.getElementById('git-conflict-union');
-    const btnOurs = document.getElementById('git-conflict-ours');
-    const btnTheirs = document.getElementById('git-conflict-theirs');
-    const btnOpen = document.getElementById('git-conflict-open');
-    const btnAbort = document.getElementById('git-conflict-abort');
-    if (!dialog || !msgEl || !listEl) return null;
-
-    // 默认策略：文件里已写入 git 标准冲突标记，引导用户在编辑器里改
-    const useMarkers = this.gitConflictStrategy() === 'markers';
-    document.getElementById('git-conflict-title').textContent = this.t('gitConflictTitle');
-    msgEl.textContent = (stage === 'unresolved'
-      ? this.t('gitConflictMsg') + ' ' + this.t('gitConflictPrevUnresolved')
-      : this.t('gitConflictMsg'))
-      + (useMarkers ? '\n' + this.t('gitConflictMarkerHint') : '')
-      + (fakeResolved ? '\n' + this.t('gitConflictFakeResolved') : '');
-    // 路径一律按纯文本渲染（防路径注入 XSS）
-    listEl.textContent = '';
-    for (const f of files) {
-      const li = document.createElement('li');
-      li.textContent = f;
-      listEl.appendChild(li);
-    }
-    btnUnion.textContent = this.t('gitConflictKeepUnion');
-    btnOurs.textContent = this.t('gitConflictKeepOurs');
-    btnTheirs.textContent = this.t('gitConflictKeepTheirs');
-    btnOpen.textContent = this.t('gitConflictOpenEditor');
-    btnAbort.textContent = this.t('gitConflictAbortAction');
-    // 默认策略下主按钮是「打开冲突文件」（让用户自己改标记），其余策略退化为主按钮「保留双方」
-    btnUnion.classList.toggle('dialog-btn-primary', !useMarkers);
-    btnOpen.classList.toggle('dialog-btn-primary', useMarkers);
-    dialog.classList.remove('hidden');
-
-    const disabled = (on) => {
-      for (const b of [btnUnion, btnOurs, btnTheirs, btnOpen, btnAbort]) b.disabled = on;
-    };
-    // 处理器声明在外层作用域：cleanup 需要引用它们来解绑（内层声明外层读不到）
-    let onUnion, onOurs, onTheirs, onOpen, onAbort, onOverlay;
-    const cleanup = () => {
-      dialog.classList.add('hidden');
-      disabled(false);
-      btnUnion.removeEventListener('click', onUnion);
-      btnOurs.removeEventListener('click', onOurs);
-      btnTheirs.removeEventListener('click', onTheirs);
-      btnOpen.removeEventListener('click', onOpen);
-      btnAbort.removeEventListener('click', onAbort);
-      dialog.removeEventListener('click', onOverlay);
-    };
-
-    return await new Promise((resolve) => {
-      const finish = (v) => { cleanup(); resolve(v); };
-      // 按策略解决 → 提交合并 → 继续推送
-      const doResolve = async (strategy) => {
-        disabled(true);
-        try {
-          const r = await invoke('git_resolve_conflicts', {
-            path: this.workspaceFolder,
-            strategy,
-            files: files.length ? files : null,
-          });
-          disabled(false);
-          if (r && r.resolved) {
-            this._gitPullPaused = false;
-            this._scheduleTreeRefresh();
-            this.setStatus(this.t('gitConflictResolved'));
-            if (r.pushError) this.showToast(this.t('gitSyncFailed') + ': ' + r.pushError, 'danger');
-            finish('resolved');
-            return;
-          }
-          this.showToast(this.t('gitConflictResolveFailed'), 'danger');
-          // 解决失败：保留对话框（不 resolve），让用户换一种方式或打开文件夹手动处理
-          return;
-        } catch (e) {
-          disabled(false);
-          this.showToast(this.t('gitConflictResolveFailed') + ': ' + e, 'danger');
-          return;
-        }
-      };
-      onUnion = () => doResolve('union');
-      onOurs = () => doResolve('ours');
-      onTheirs = () => doResolve('theirs');
-      onOpen = async () => {
-        // 直接在 vsnote 里打开冲突文件（文件名保持原样，内容已是 git 冲突标记），
-        // 用户改好后保存 → _noteFsChanged → 下次同步自动补上合并提交并推送。
-        const absPaths = files.map((f) => this._absWorkspacePath(f));
-        finish('manual');
-        for (const p of absPaths.slice(0, 8)) {
-          const idx = this.tabs.findIndex(t => t.filePath && this._samePath(t.filePath, p));
-          if (idx !== -1) {
-            // 已打开的标签页：switchTab 只会显示内存里的旧内容（没有标记），
-            // 必须重载磁盘上的冲突标记版才看得见；有未保存改动时不强灌，
-            // 只切过去并显示外部变更横幅，由用户自己决定是否重载。
-            await this.switchTab(idx);
-            const tab = this.tabs[idx];
-            if (tab && !tab.isModified) await this.reloadTabFromDisk(tab);
-          } else {
-            await this.openFilePath(p);
-          }
-        }
-        this.showToast(this.t('gitConflictOpenedHint'), 'success');
-      };
-      onAbort = async () => {
-        disabled(true);
-        try {
-          await invoke('git_abort_merge', { path: this.workspaceFolder });
-          // 放弃后暂停自动拉取，避免远端照样领先导致下次定时同步再次冲突
-          this._gitPullPaused = true;
-          this._scheduleTreeRefresh();
-          this.setStatus(this.t('gitConflictAborted'));
-          this.showToast(this.t('gitConflictPausedHint'), 'danger');
-          finish('aborted');
-        } catch (e) {
-          disabled(false);
-          this.showToast(this.t('gitSyncFailed') + ': ' + e, 'danger');
-        }
-      };
-      onOverlay = (e) => { if (e.target === dialog) finish(null); };
-
-      btnUnion.addEventListener('click', onUnion);
-      btnOurs.addEventListener('click', onOurs);
-      btnTheirs.addEventListener('click', onTheirs);
-      btnOpen.addEventListener('click', onOpen);
-      btnAbort.addEventListener('click', onAbort);
-      dialog.addEventListener('click', onOverlay);
-    });
   }
 
   // 统一「一批路径按目录/文件分发」：目录加载为工作区（仅第一个，多余目录提示忽略），

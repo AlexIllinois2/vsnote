@@ -3107,41 +3107,6 @@ body.is-resizing .outline-sidebar {
   max-width: 380px;
 }
 
-/* Git 合并冲突对话框 */
-.git-conflict-dialog {
-  max-width: 520px;
-}
-
-/* 冲突说明含换行（标记格式说明），按纯文本保留换行 */
-#git-conflict-message {
-  white-space: pre-line;
-}
-
-.git-conflict-files {
-  margin: 10px 0 0;
-  padding: 8px 10px;
-  max-height: 180px;
-  overflow-y: auto;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background: var(--bg-secondary);
-  list-style: none;
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-.git-conflict-files li {
-  color: var(--text-primary);
-  word-break: break-all;
-}
-
-.git-conflict-files:empty {
-  display: none;
-}
-
-.git-conflict-dialog .dialog-footer {
-  flex-wrap: wrap;
-}
 .close-confirm-dialog .dialog-content p {
   margin-bottom: 8px;
 }

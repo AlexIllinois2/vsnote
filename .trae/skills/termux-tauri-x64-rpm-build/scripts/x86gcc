@@ -1,0 +1,10 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# clang wrapper for cross-compiling to x86_64 Debian/glibc.
+# SYSROOT must point at the extracted amd64 sysroot (default ~/xsys).
+SYS="${SYSROOT:-$HOME/xsys}"
+exec /data/data/com.termux/files/usr/bin/clang \
+  --target=x86_64-unknown-linux-gnu \
+  --sysroot="$SYS" \
+  -fuse-ld=lld \
+  -Qunused-arguments \
+  "$@"

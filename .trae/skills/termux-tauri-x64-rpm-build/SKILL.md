@@ -106,7 +106,9 @@ readelf -d target/x86_64-unknown-linux-gnu/release/vsnote | grep NEEDED
 printf 'buildarch_compat: aarch64: x86_64\n' > ~/xbuild/rpmrc
 ```
 
-Run `scripts/mk-rpm.sh` (defaults to this repo, overridable by `PRODUCT`, `VERSION`, `PROJECT_DIR`, `BIN_PATH`, `RESOURCES`). Then:
+Run `scripts/mk-rpm.sh` (defaults to this repo, overridable by `PRODUCT`, `VERSION`, `RELEASE`, `PROJECT_DIR`, `BIN_PATH`, `RESOURCES`).
+
+`RELEASE` defaults to `<commit count>.<short sha>.<UTC timestamp>`, or `<UTC timestamp>.<binary sha7>` when the synced tree has no `.git`. Each repackage therefore yields a new EVR (e.g. `vsnote-1.1.0-326.25baae5.20261101025943.x86_64.rpm`) so `dnf` performs an upgrade instead of reporting "nothing to do". Then:
 
 ```sh
 rpmbuild -bb --rcfile ~/xbuild/rpmrc --target x86_64-linux --define "_topdir $HOME/xbuild/rpm" ~/xbuild/vsnote.spec

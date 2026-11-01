@@ -9,9 +9,11 @@
 #   VSNOTE_CN_MIRROR=1   使用国内镜像（rustup 清华 / npm npmmirror / crates.io 镜像）
 #                        本机网络访问 GitHub Release 常被代理拦截时建议开启
 #   KEEP_WORKDIR=1       保留构建目录 ~/vsnote-build，便于排查
+#   RELEASE=<x>          手动指定 RPM Release；默认自动生成
+#                        <提交数>.<短hash>.<UTC时间戳>（无 git 时为时间戳）
 #
-# 产物：
-#   src-tauri/target/release/bundle/rpm/vsnote-<ver>-1.x86_64.rpm
+# 产物（每次打包 Release 都不同，避免 dnf 认为同版本而跳过更新）：
+#   src-tauri/target/release/bundle/rpm/vsnote-<ver>-<release>.x86_64.rpm
 #   并复制到 <项目根>/dist/
 # ---------------------------------------------------------------------------
 set -euo pipefail
@@ -56,6 +58,25 @@ log "构建目录: ${WORKDIR}"
 VERSION="$(node -p "require('./package.json').version" 2>/dev/null || true)"
 [ -n "$VERSION" ] || VERSION="$(grep -m1 '"version"' package.json | sed -E 's/.*"version"[^0-9]*([0-9.]+).*/\1/')"
 log "版本号: ${VERSION}"
+
+# ---------------------------------------------- 1.5 构建唯一标识（RPM Release）
+# RPM 的 Version 字段不允许出现 '-'（'-' 是 version 与 release 的分隔符），
+# 因此把本次打包的唯一标识放进 Release 字段：
+#   <提交数>.<短 hash>.<UTC 时间戳>   → 1.1.0-157.25baae5.20261101193012
+# 提交数保证 EVR 单调递增，时间戳保证同一提交重复打包也一定是新版本，
+# 这样 dnf 不会因为 "同版本" 而跳过更新。
+RPM_RELEASE="${RELEASE:-}"
+if [ -z "$RPM_RELEASE" ]; then
+  BUILD_STAMP="$(date -u +%Y%m%d%H%M%S)"
+  if command -v git >/dev/null 2>&1 && git -C "$SRC_ROOT" rev-parse --short HEAD >/dev/null 2>&1; then
+    COMMIT_COUNT="$(git -C "$SRC_ROOT" rev-list --count HEAD 2>/dev/null || echo 0)"
+    COMMIT_SHA="$(git -C "$SRC_ROOT" rev-parse --short HEAD)"
+    RPM_RELEASE="${COMMIT_COUNT}.${COMMIT_SHA}.${BUILD_STAMP}"
+  else
+    RPM_RELEASE="$BUILD_STAMP"
+  fi
+fi
+log "构建标识(RPM Release): ${RPM_RELEASE}  →  版本 ${VERSION}-${RPM_RELEASE}"
 
 # ------------------------------------------------------------ 2. 国内镜像开关
 if [ "${VSNOTE_CN_MIRROR:-0}" = "1" ]; then
@@ -229,11 +250,41 @@ log "强制重建 vsnote build script 产物（确保内嵌的是最新前端）
 rm -rf src-tauri/target/release/build/vsnote-* src-tauri/target/release/.fingerprint/vsnote-*
 
 # --------------------------------------------------------------- 9. 构建 RPM
+# tauri 的 RPM Release 只能从 tauri.conf.json 读取，这里临时写入本次构建标识，
+# 构建结束（含失败退出）后由 trap 自动还原，保持工作区干净。
+CONF="src-tauri/tauri.conf.json"
+CONF_BAK="${CONF}.buildid-bak"
+cp -f "$CONF" "$CONF_BAK"
+restore_conf() {
+  if [ -f "$CONF_BAK" ]; then
+    mv -f "$CONF_BAK" "$CONF"
+  fi
+}
+trap restore_conf EXIT
+
+node - "$CONF" "$RPM_RELEASE" <<'NODE'
+const fs = require('fs');
+const [file, release] = process.argv.slice(2);
+const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+cfg.bundle = cfg.bundle || {};
+cfg.bundle.linux = cfg.bundle.linux || {};
+cfg.bundle.linux.rpm = cfg.bundle.linux.rpm || {};
+cfg.bundle.linux.rpm.release = release;
+fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');
+NODE
+log "已写入 RPM Release: ${RPM_RELEASE}"
+
 log "开始构建 RPM（首次全量编译约 15~30 分钟）"
 npm run tauri -- build --bundles rpm
 
 RPM_DIR="src-tauri/target/release/bundle/rpm"
-RPM_FILE="$(ls -1 "${RPM_DIR}"/*.rpm 2>/dev/null | head -1 || true)"
+EXPECTED_RPM="${RPM_DIR}/${APP_NAME}-${VERSION}-${RPM_RELEASE}.x86_64.rpm"
+if [ -f "$EXPECTED_RPM" ]; then
+  RPM_FILE="$EXPECTED_RPM"
+else
+  warn "未找到预期产物 ${EXPECTED_RPM}，回退到目录中最新的 RPM"
+  RPM_FILE="$(ls -1t "${RPM_DIR}"/*.rpm 2>/dev/null | head -1 || true)"
+fi
 [ -n "$RPM_FILE" ] || die "未生成 RPM，检查 ${RPM_DIR}"
 
 log "构建完成: ${RPM_FILE}"

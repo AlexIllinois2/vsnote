@@ -1,6 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # Stage a Tauri x86_64 binary and build an RPM with rpmbuild on aarch64 Termux.
-# Overridable env: PRODUCT, VERSION, PROJECT_DIR, BIN_PATH, RESOURCES,
+# Overridable env: PRODUCT, VERSION, RELEASE, PROJECT_DIR, BIN_PATH, RESOURCES,
 #                  SUMMARY, COMMENT, CATEGORIES, ICON_DIR, RPM_TOP, STAGE.
 set -euo pipefail
 
@@ -32,6 +32,25 @@ CATEGORIES="${CATEGORIES:-Office;TextEditor;}"
 RESOURCES="${RESOURCES-demo.md assets/icon.png}"
 
 [ -x "$BIN_PATH" ] || { echo "missing binary: $BIN_PATH"; exit 1; }
+
+# Build-unique RPM release. RPM's Version field cannot contain '-', so the
+# identifier goes into Release:
+#   <commit count>.<short sha>.<UTC timestamp>
+# and when git is unavailable (the source is synced without .git) the first
+# characters of the binary's sha256 stand in for the sha:
+#   <UTC timestamp>.<sha7>
+# The numeric prefix keeps EVR monotonically increasing and the timestamp makes
+# every repackage of the same commit a new version, so dnf never skips it.
+if [ -z "${RELEASE:-}" ]; then
+  STAMP="$(date -u +%Y%m%d%H%M%S)"
+  if command -v git >/dev/null 2>&1 && git -C "$PROJECT_DIR" rev-parse --short HEAD >/dev/null 2>&1; then
+    RELEASE="$(git -C "$PROJECT_DIR" rev-list --count HEAD 2>/dev/null || echo 0).$(git -C "$PROJECT_DIR" rev-parse --short HEAD).${STAMP}"
+  else
+    BIN_SHA="$(sha256sum "$BIN_PATH" 2>/dev/null | cut -c1-7)"
+    RELEASE="${STAMP}.${BIN_SHA:-unknown}"
+  fi
+fi
+echo "version: $VERSION-$RELEASE"
 
 rm -rf "$STAGE" "$RPM_TOP"
 mkdir -p "$STAGE/usr/bin" "$STAGE/usr/lib/$PRODUCT" \
@@ -103,7 +122,7 @@ SPEC="$HOME/xbuild/$PRODUCT.spec"
   echo 'AutoReqProv: no'
   echo "Name: $PRODUCT"
   echo "Version: $VERSION"
-  echo 'Release: 1'
+  echo "Release: $RELEASE"
   echo "Summary: $SUMMARY"
   echo 'License: GPL-3.0'
   echo 'BuildArch: x86_64'
@@ -132,4 +151,4 @@ SPEC="$HOME/xbuild/$PRODUCT.spec"
 
 rpmbuild -bb --rcfile "$RPMRC" --target x86_64-linux --define "_topdir $RPM_TOP" "$SPEC"
 ls -l "$RPM_TOP"/RPMS/x86_64/*.rpm
-rpm -qp --queryformat "arch=%{ARCH} name=%{NAME} ver=%{VERSION}\n" "$RPM_TOP"/RPMS/x86_64/*.rpm
+rpm -qp --queryformat "arch=%{ARCH} name=%{NAME} ver=%{VERSION} release=%{RELEASE}\n" "$RPM_TOP"/RPMS/x86_64/*.rpm

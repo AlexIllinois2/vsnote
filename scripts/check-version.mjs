@@ -37,7 +37,7 @@ checkVersion('src-tauri/tauri.conf.json', /"version"\s*:\s*"([^"]+)"/, { label: 
 checkVersion('src/app.js', /versionInfo:\s*'TizuMark v([^']+)'/, { count: 2, label: 'app.js versionInfo(zh/en)' });
 checkVersion('src/index.html', /id="about-version">TizuMark v([^<]+)</, { label: 'index.html about-version' });
 checkVersion('README.md', /Version-([0-9.]+)-blue/, { label: 'README.md badge' });
-checkVersion('README.en.md', /Version-([0-9.]+)-blue/, { label: 'README.en.md badge' });
+checkVersion('README.zh-CN.md', /Version-([0-9.]+)-blue/, { label: 'README.zh-CN.md badge' });
 checkVersion('scripts/release-notes.js', /const VERSION\s*=\s*'([^']+)'/, { label: 'release-notes.js' });
 checkVersion('update-windows-x86_64.json', /"version"\s*:\s*"([^"]+)"/, { label: 'update json' });
 

@@ -1,6 +1,6 @@
 # vsnote
 
-🌐 **简体中文** | [English](README.en.md)
+🌐 [简体中文](README.zh-CN.md) | **English**
 
 <div align="center">
 
@@ -9,9 +9,9 @@
 </div>
 
 <p align="center">
-  <b>⚡轻量 &nbsp;·&nbsp; 🚀高速 &nbsp;·&nbsp; ✨简洁 &nbsp;·&nbsp; 🆓<font color="#16a34a">开源免费</font></b>
+  <b>⚡Lightweight &nbsp;·&nbsp; 🚀Blazing Fast &nbsp;·&nbsp; ✨Minimal &nbsp;·&nbsp; 🆓<font color="#16a34a">Free & Open Source</font></b>
   <br>
-  <b>一个纯粹、快速的 Markdown 编辑器（基于 TizuMark 的增强分支）</b>
+  <b>A clean, fast Markdown editor (enhanced fork of TizuMark)</b>
 </p>
 
 <p align="center">
@@ -24,185 +24,194 @@
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License">
 </p>
 
-<p align="center" style="font-size:1.15em"><b>安装包仅 ~7MB · 内存占用 < 50MB · 双击即开</b></p>
+<p align="center" style="font-size:1.15em"><b>~7MB installer · &lt;50MB RAM · Double-click to launch</b></p>
 
-> 本项目 fork 自 [TizuMark](https://github.com/tizuio/TizuMark)（原作者 [@tizu](https://github.com/tizuio)），在其基础上做了若干功能增强与调整，详见下文[「相对原项目的修改」](#-相对原项目的修改)。感谢原作者的优秀工作。
+> This project is a fork of [TizuMark](https://github.com/tizuio/TizuMark) by [@tizu](https://github.com/tizuio), with additional features and adjustments on top — see [Changes vs. the original project](#-changes-vs-the-original-project). Many thanks to the original author.
 
 ---
 
-## 为什么你需要 vsnote？
+## Why vsnote?
 
-<p align="center"><b>打开、查看、编辑、导出——就是这么简单。</b></p>
+<p align="center"><b>Open. Read. Edit. Export. That's it.</b></p>
 
-市面上不缺 Markdown 编辑器，但大多走向两个极端：要么是动辄几百 MB 的"重型武器"，要么功能简陋得无法日常使用。vsnote 卡在中间，刚好合适——把写作者最在意的几件事做到极致。
+The world isn't short of Markdown editors. But most fall into one of two camps: heavyweight monsters that hog hundreds of MB, or toys too barebones for real work. vsnote lands right in the sweet spot.
 
-| 痛点 | 常见方案 | ✨ vsnote |
+| Pain Point | The Usual Way | ✨ vsnote |
 |---|---|---|
-| 🐢 **太重** | 几百 MB 内存、几个 G 安装包，启动等半天 | **Rust 原生引擎，安装包 ~7MB、内存 <50MB，双击一秒即开** |
-| 👯 **分屏** | 源码和渲染各一屏，看文档得来回切窗口 | **实时预览、所见即所得，编辑/预览滚动自动同步** |
-| 🌀 **长文档** | 滚轮滚到手酸，回头找段落得翻半天 | **大纲自动解析标题层级，一键跳转任意章节** |
-| 🧩 **画公式/图** | 装 LaTeX、切画图工具、导出再粘贴 | **内置 KaTeX 与 Mermaid，公式与图表代码即渲染** |
+| 🐢 **Too heavy** | Hundreds of MB RAM, multi-GB install, slow boot | **Rust engine. ~7MB installer, <50MB RAM, up in a second** |
+| 👯 **Split views** | Source on one side, render on the other — scroll and squint | **Live preview, WYSIWYG, editor/preview scroll auto-synced** |
+| 🌀 **Long docs** | Endless scrolling, can't find that one section | **Auto-generated outline from headings, one click to any chapter** |
+| 🧩 **Math & diagrams** | Install LaTeX, switch tools, export, paste, repeat | **Built-in KaTeX & Mermaid — math and diagrams render from code** |
 
 ---
 
-## ✨ 核心特色
+## Key Features
 
-> vsnote 卡在"重型 IDE"和"简陋记事本"之间，刚好合适——把写作者最在意的几件事做到极致。
+> vsnote lands right in the sweet spot between heavyweight IDEs and barebones notepads — nailing the things writers care about most.
 
-- ⚡ **极速轻量**：基于 **Rust + Tauri v2**（系统原生 WebView），安装包约 **7MB**、内存占用 **< 50MB**，双击一秒即开，比 Electron 类应用省 4/5 内存。
-- 👁️ **实时预览所见即所得**：左边写、右边渲染，编辑/预览滚动自动同步，无需来回切换窗口；支持纯预览阅读模式一键切换，分屏预览可折叠，恢复时保留你的分屏宽度。
-- 📄 **纯文本文件直接编辑**：`.txt` / `.log` 等非 Markdown 文件按纯文本打开——不做语法着色与预览排版、回车不续写列表、格式工具栏自动收起，保存保留原换行符（CRLF / LF）；`.js` / `.json` / `.py` 等代码文件仍按各自语法着色，设置中可关闭纯文本模式。
-- 🧭 **智能大纲导航**：自动解析标题层级，一键跳转任意章节，长文档永不迷路。
-- 📐 **内置 KaTeX 数学公式**：行内公式、独立公式块、矩阵、方程组全支持——写论文、做笔记、记公式直接搞定。
-- 📊 **内置 Mermaid 图表**：流程图、时序图、甘特图、类图、状态图……**用代码画图，自动跟随明暗主题切换配色**。
-- 🖼️ **图片粘贴即插入**：截图/拖拽直接粘贴，支持 assets 目录存储或 Base64 内联，自动去重；导出时相对路径解析与预览完全一致。
-- 📤 **多种导出**：HTML 单文件（完整样式、完全离线）、高清长图 PNG、PDF（系统打印对话框），均保留暗黑/亮色主题样式。
-- ⌨️ **快捷键全自定义**：每一条快捷键都能在 `文件 → 快捷键设置` 中改键，默认采用 VSCode 方案，贴合你的肌肉记忆。
-- 📂 **多标签页 + 工作区**：同时编辑多个文件、拖拽批量打开、文件夹工作区、文件树拖拽移动与右键菜单、`.md` 文件关联。
-- 🚀 **海量文档流畅预览**：数万行超大文档采用滑动窗口 + 虚拟渲染，只渲染当前阅读区域，编辑器永不卡顿；外部磁盘变更自动检测并提示重新加载，多工具协作不丢稿。
-- 🎨 **深度个性化**：亮色 / 暗黑 / 跟随系统一键切换；内置 5 套配色方案（基准 / 暖橙 / 翠林 / 极夜 / 暮紫）、2 套字体方案（简约 / 印刷），并可在 `文件 → 设置 → 自定义字体` 导入本地 `.ttf` / `.otf` / `.woff` 字体，编辑器与预览分别指定。
-- 🌐 **中 / 英 界面语言一键切换**：内置完整双语界面，随时在设置中切换，新手与外文写作都友好。
-- 💾 **会话记忆**：重启自动恢复上次打开的标签页、文件夹工作区与展开目录，打开即回到上次状态。
-
----
-
-## 🔀 相对原项目的修改
-
-本项目基于 [TizuMark v1.1.0](https://github.com/tizuio/TizuMark) 修改而来，主要变化：
-
-### 功能
-
-- ⌨️ **默认 VSCode 快捷键方案**：`Ctrl+P` 快速打开文件（列表循环）、`Ctrl+B` 侧边栏开关、`Alt+↑/↓` 上下移动行/选区等，可在 `文件 → 快捷键设置` 中切换回其他方案或继续自定义。
-  - **拖拽移动文件 / 文件夹**（目标重名自动加 `(1)` 后缀，已打开标签页路径自动同步，目录展开状态一并迁移）；
-  - **一键定位当前文件**在文件树中的位置。
-- 📝 **新建文件自动补全后缀**：新建无扩展名的文件时自动追加 `.md`。
-- 🔗 **编辑区点击打开链接**：编辑器中的 http/https 链接可直接点击访问。
-- 📄 **纯文本文件支持**：`.txt` / `.log` 等非 Markdown 文件按纯文本打开（不做 Markdown 语法着色与排版、格式工具栏收起、保存保留原换行符 CRLF / LF），安装时注册 `.txt` 文件关联；代码文件按各自语法着色，可在 `设置 → 行为` 关闭纯文本模式。
-- 🔀 **预览折叠恢复保留分屏宽度**：折叠预览后再展开，恢复为你上次拖拽的分屏宽度，而非重置为默认对半分。
-
-### 行为调整
-
-- 🚫 **移除系统托盘**：去掉托盘图标与"最小化到托盘"选项，窗口关闭行为回归"每次询问"。
+- ⚡ **Blazing fast & lightweight**: Built on **Rust + Tauri v2** (native WebView), ~**7MB** installer, **<50MB** RAM, launches in under a second — 4/5 less memory than Electron apps.
+- 👁️ **Live WYSIWYG preview**: Write on the left, see it render on the right. Editor and preview scroll auto-synced — no window switching. One-click preview-only reading mode; collapsible split preview that restores your last pane width on expand.
+- 📄 **Plain-text file editing**: `.txt` / `.log` and other non-Markdown files open as plain text — no syntax rendering or preview layout, Enter never continues lists, format toolbar auto-hidden, original line endings (CRLF / LF) preserved on save. Code files like `.js` / `.json` / `.py` keep their own syntax highlighting; plain-text mode can be turned off in Settings.
+- 🧭 **Smart outline navigation**: Auto-parses heading hierarchy, one click to any chapter. Never get lost in long docs.
+- 📐 **Built-in KaTeX math**: Inline formulas, display blocks, matrices, equation systems — papers, notes, formulas all handled.
+- 📊 **Built-in Mermaid diagrams**: Flowcharts, sequence diagrams, Gantt charts, class diagrams, state diagrams… **draw with code, auto-adapts to light/dark theme**.
+- 🖼️ **Paste-to-insert images**: Screenshots or drag-drop, auto-dedup via MD5. Store in `assets/` or inline as Base64. Relative paths resolve identically in preview and export.
+- 📤 **Multi-format export**: Standalone HTML (full styling, fully offline), high-res PNG long screenshot, PDF (system print dialog) — all preserve dark/light theme.
+- ⌨️ **Fully customizable shortcuts**: Every single shortcut can be rebound in `File → Keyboard Shortcuts`. The VSCode preset is the default, matching your muscle memory.
+- 📂 **Multi-tab + workspace**: Edit multiple files at once, drag-drop batch open, folder workspace with sidebar file tree (drag-to-move & context menu), `.md` file association.
+- 🚀 **Huge-doc smooth preview**: Sliding-window + virtual rendering for documents with tens of thousands of lines — never lags. External file changes auto-detected with reload prompt.
+- 🎨 **Deep personalization**: Light / Dark / Follow System; 5 color schemes (Default / Sunset / Forest / Nord / Dusk), 2 font schemes (Sans / Serif), plus custom font import (`.ttf` / `.otf` / `.woff`) with separate editor & preview fonts.
+- 🌐 **Bilingual UI**: Chinese / English interface toggle at any time.
+- 💾 **Session restore**: Reopens tabs, folder workspace, and expanded directories from last session.
 
 ---
 
-## 功能一览
+## 🔀 Changes vs. the Original Project
 
-| 📝 编辑 | 👁️ 预览 | 📤 导出 |
+This project is based on [TizuMark v1.1.0](https://github.com/tizuio/TizuMark). Main changes:
+
+### New Features
+
+- ⌨️ **VSCode shortcuts by default**: `Ctrl+P` quick-open (list wraps around), `Ctrl+B` sidebar toggle, `Alt+↑/↓` move line/selection, etc. Other presets and full rebinding remain available in `File → Keyboard Shortcuts`.
+- 📂 **File tree enhancements**:
+  - Context menu (new / rename / delete, etc.);
+  - **Drag-to-move files / folders** (name conflicts auto-suffixed with `(1)`, open tabs re-pathed automatically, expanded state migrated);
+  - **Reveal current file** in the file tree with one click.
+- 📝 **Auto-append extension**: Newly created files without an extension get `.md` appended automatically.
+- 🔗 **Click-to-open links in the editor**: http/https links in the editor are directly clickable.
+- 📄 **Plain-text file support**: `.txt` / `.log` and other non-Markdown files open as plain text (no Markdown highlighting or layout, format toolbar hidden, original CRLF / LF line endings preserved); `.txt` file association registered on install. Code files keep their own syntax highlighting; plain-text mode can be disabled in `Settings → Behavior`.
+- 🔀 **Preview collapse restores pane width**: Collapsing and re-expanding the preview restores your last dragged split-pane width instead of resetting to the default 50/50.
+- 📭 **Empty state after closing all tabs**: No forced auto-created blank document — the editor switches to read-only with a "no file open" hint.
+
+### Behavior Changes
+
+- 🚫 **System tray removed**: Tray icon and "minimize to tray" options are gone; window close behavior is back to "ask every time".
+
+### Engineering & Build
+
+- 🏗️ **Three-platform CI releases**: Pushing a `v*` tag automatically builds **Windows (msi / NSIS) + Linux (deb / rpm / AppImage) + macOS (dmg)** and publishes them to the GitHub Release (no test runs).
+- 🐛 **Bug fixes**: Hover mis-selection after file-search (`Ctrl+P`) list redraws, `Esc` inserting a stray `·`, arrow-key shortcut recording not working, and more.
+- 🎨 **Color scheme & UI polish**.
+
+---
+
+## Feature Matrix
+
+| 📝 Editing | 👁️ Preview | 📤 Export |
 |---|---|---|
-| GFM 完整语法高亮 | 实时同步滚动 | 导出 HTML 单文件（完整样式） |
-| 代码块 100+ 语言着色 | KaTeX 数学公式渲染 | 导出高清长图 PNG |
-| 查找替换（支持正则） | Mermaid 流程图/时序图/甘特图/状态图 | 导出 PDF（`Ctrl+P` 系统打印） |
-| 跨文件搜索（`Ctrl+H`）/ 全局搜索（`Ctrl+Shift+F`） | Emoji 短代码 (`:rocket:` → 🚀) | 保留暗黑/亮色主题样式 |
-| 可折叠格式工具栏 | 图片查看器（拖拽平移 + 滚轮缩放） | 完全离线，无需联网 |
-| 自动补全括号、引号 | 自适应图片尺寸 | 中英文 Emoji 完美适配 |
-| 图片粘贴插入、自动去重（MD5） | 任务列表预览可点击勾选 | 自定义图片存储路径 |
-| 插入菜单（表格/提示块/目录等） | 图片自动带宽高属性 | |
-| 编辑区点击链接直接打开 | | |
-| 纯文本模式（.txt / .log 直接编辑） | 纯预览阅读模式 + 预览折叠 | |
+| Full GFM syntax highlighting | Live scroll-synced preview | Standalone HTML (with full styling) |
+| 100+ language code highlighting | KaTeX math rendering | High-res long screenshot PNG |
+| Find & replace with regex | Mermaid flowcharts, sequences, Gantt, state | Export PDF (`Ctrl+P` print dialog) |
+| Cross-file search (`Ctrl+H`) / Global search (`Ctrl+Shift+F`) | Emoji shortcodes (`:rocket:` → 🚀) | Dark / light theme preserved |
+| Collapsible format toolbar | Image viewer (drag-pan + scroll-zoom) | 100% offline |
+| Auto bracket & quote pairing | Adaptive image sizing | CJK Emoji support |
+| Image paste, auto-dedup (MD5) | Clickable task-list checkboxes | Custom image asset path |
+| Insert menu (tables, callouts, TOC) | Auto width/height on image insert | |
+| Click-to-open links in editor | | |
+| Plain-text mode (.txt / .log) | Preview-only mode + collapsible preview | |
 
-| ⚡ 效率 | 🎨 个性化 | 🔧 专业 |
+| ⚡ Productivity | 🎨 Style | 🔧 Power |
 |---|---|---|
-| 大纲导航一键跳转 | 亮色 / 暗黑 / 跟随系统 | CLI 命令行打开文件 |
-| 文件夹工作区（侧边栏文件树） | 字体大小/行高/内容宽度可调 | 文件关联 .md / .markdown / .txt |
-| 跨文件搜索（正则 + 目录搜索） | Tab 宽度 / 自动换行开关 | 最近打开文件列表 |
-| 标签页拖拽排序 | 代码块行号 / 代码自动换行开关 | 未保存状态标记 + 关闭提醒 |
-| 拖拽、批量打开文件 | 全套快捷键可自定义 | 关闭行为可选 |
-| 文件树拖拽移动 + 右键菜单 | 导入自定义字体（编辑器/预览分别指定） | 状态栏实时字数统计 |
-| 一键定位当前文件 | 5 套配色方案 + 2 套字体方案 | 外部变更检测 + 重新加载提示 |
-| 编辑/预览分屏比例自由拖拽 | 中 / 英 界面语言一键切换 | 三平台 CI 自动打包发布 |
-| 预览内查找（支持正则）+ 复制为 HTML | 自绘无边框窗口（自定义最小化/最大化/关闭） | |
-| 软换行（回车即换行）开关 | 静默检查更新，有新版自动提示 | |
-| 会话记忆（重启恢复标签页/文件夹） | | |
+| Outline sidebar — jump anywhere | Light / Dark / Follow System | CLI file opening |
+| Folder workspace (sidebar file tree) | Font size, line height, max width | File association: .md, .markdown, .txt |
+| Cross-file search (regex + directory) | Tab width, word wrap toggle | Recently opened files list |
+| Tab drag-to-reorder | Code block line numbers / auto-wrap | Unsaved-state markers + close prompt |
+| Drag & drop, batch file open | Fully rebindable shortcuts | Close behavior options |
+| File tree drag-to-move + context menu | Import custom fonts (editor & preview separately) | Status bar word & char count |
+| Reveal current file in tree | 5 color schemes + 2 font schemes | External-change detection & reload prompt |
+| Free-drag split pane ratio | 中文 / English UI toggle | Three-platform CI packaging |
+| Find in preview (regex) + copy as HTML | Frameless custom window controls | |
+| Soft line break toggle | Silent update check on startup | |
+| Session restore (tabs & workspace) | | |
 
 ---
 
-## 界面预览
+## Screenshots
 
 <p align="center">
-  <img src="screenshots/01-main.png" alt="主界面全貌" width="45%">
-  <img src="screenshots/02-tabs.png" alt="多标签与标签栏滚动" width="45%">
+  <img src="screenshots/01-main.png" alt="Main Interface" width="45%">
+  <img src="screenshots/02-tabs.png" alt="Tabs & Scrollable Tab Bar" width="45%">
   <br>
-  <img src="screenshots/03-math.png" alt="KaTeX 数学公式渲染" width="45%">
-  <img src="screenshots/04-mermaid.png" alt="Mermaid 图表渲染" width="45%">
+  <img src="screenshots/03-math.png" alt="KaTeX Math Rendering" width="45%">
+  <img src="screenshots/04-mermaid.png" alt="Mermaid Diagram Rendering" width="45%">
   <br>
-  <img src="screenshots/05-code.png" alt="代码语法高亮" width="45%">
-  <img src="screenshots/06-theme.png" alt="暗色主题" width="45%">
+  <img src="screenshots/05-code.png" alt="Code Syntax Highlighting" width="45%">
+  <img src="screenshots/06-theme.png" alt="Dark Theme" width="45%">
   <br>
-  <img src="screenshots/07-font.png" alt="字体方案" width="45%">
-  <img src="screenshots/08-shortcuts.png" alt="快捷键自定义设置" width="45%">
+  <img src="screenshots/07-font.png" alt="Font Scheme" width="45%">
+  <img src="screenshots/08-shortcuts.png" alt="Customizable Shortcuts" width="45%">
   <br>
-  <img src="screenshots/09-image.png" alt="图片插入与设置" width="45%">
-  <img src="screenshots/10-large.png" alt="超大文档流畅预览" width="45%">
+  <img src="screenshots/09-image.png" alt="Image Insert & Settings" width="45%">
+  <img src="screenshots/10-large.png" alt="Smooth Large-Document Preview" width="45%">
   <br>
-  <img src="screenshots/11-export.png" alt="导出菜单" width="45%">
-  <img src="screenshots/12-find.png" alt="查找替换" width="45%">
+  <img src="screenshots/11-export.png" alt="Export Menu" width="45%">
+  <img src="screenshots/12-find.png" alt="Find & Replace" width="45%">
   <br>
-  <img src="screenshots/13-workspace.png" alt="文件夹工作区" width="45%">
-  <img src="screenshots/14-callout.png" alt="提示框渲染" width="45%">
+  <img src="screenshots/13-workspace.png" alt="Folder Workspace" width="45%">
+  <img src="screenshots/14-callout.png" alt="Callout Rendering" width="45%">
 </p>
 
 ---
 
-## 快速开始
+## Quick Start
 
-### 下载安装
+### Download
 
-| 平台 | 状态 |
-|------|------|
-| Windows | ✅ 已支持（msi / NSIS 安装包） |
-| macOS | ✅ 已支持（dmg，Apple Silicon） |
-| Linux | ✅ 已支持（deb / rpm / AppImage） |
+| Platform | Status |
+|----------|--------|
+| Windows | ✅ Supported (msi / NSIS installer) |
+| macOS | ✅ Supported (dmg, Apple Silicon) |
+| Linux | ✅ Supported (deb / rpm / AppImage) |
 
-<b>请打开产品发布页面下载：</b>
+<b>Visit the release page to download:</b>
 
-<a href="https://github.com/AlexIllinois2/vsnote/releases"><img src="https://img.shields.io/badge/⬇_从_GitHub_下载-181717?style=for-the-badge&logo=github&logoColor=white" alt="从 GitHub 下载"></a>
+<a href="https://github.com/AlexIllinois2/vsnote/releases"><img src="https://img.shields.io/badge/⬇_Download_from_GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="Download from GitHub"></a>
 
-> 推送 `v*` 标签后，CI 会自动构建三平台安装包并发布到上述 Release 页面。
+> After pushing a `v*` tag, CI automatically builds all three platforms and publishes them to the Release page above.
 
-> 首次打开会自动展示使用说明，也可在 `帮助 → 使用说明` 中随时查看。
+> On first launch, the user guide opens automatically. You can also find it in `Help → User Guide` anytime.
 
-> 🔔 **首次安装 / 版本升级后，vsnote 会自动打开使用说明和完整语法演示 demo.md，帮你快速上手新功能。**
+> 🔔 **On first install or after a version upgrade, vsnote automatically opens the User Guide and the full syntax demo (demo.md) to help you get started with new features.**
 
-📖 想一眼看全所有语法效果？打开 [demo.md](demo.md) 查看完整语法演示。
+📖 Want to see every syntax in action? Open [demo.md](demo.md) for a full syntax showcase.
 
-### 快捷键速览
+### Shortcuts
 
-| 快捷键 | 功能 | 快捷键 | 功能 |
+| Shortcut | Action | Shortcut | Action |
 |---|---|---|---|
-| `Ctrl+N` | 新建文件 | `Ctrl+W` | 关闭标签 |
-| `Ctrl+O` | 打开文件 | `Ctrl+F` | 查找 |
-| `Ctrl+S` | 保存文件 | `Ctrl+H` | 查找替换 |
-| `Ctrl+B` | 开关侧边栏 | `Ctrl+I` | 斜体 |
-| `Ctrl+P` | 快速打开文件 | `Alt+↑/↓` | 移动行/选区 |
+| `Ctrl+N` | New File | `Ctrl+W` | Close Tab |
+| `Ctrl+O` | Open File | `Ctrl+F` | Find |
+| `Ctrl+S` | Save File | `Ctrl+H` | Find & Replace |
+| `Ctrl+B` | Toggle Sidebar | `Ctrl+I` | Italic |
+| `Ctrl+P` | Quick Open File | `Alt+↑/↓` | Move Line/Selection |
 
-> 默认采用 VSCode 方案，所有快捷键可在 `文件 → 快捷键设置` 中自定义
+> The VSCode preset is the default; all shortcuts are customizable via `File → Keyboard Shortcuts`
 
-### 从源码构建
+### Build from Source
 
 ```bash
 git clone https://github.com/AlexIllinois2/vsnote.git
 cd vsnote
 npm install
-npm run dev      # 开发模式
-npm run build    # 构建发布版本
+npm run dev      # dev mode
+npm run build    # production build
 ```
 
 ---
 
-## 🛠 技术架构
+## 🛠 Architecture
 
 ```
 ┌──────────────────────────────────────────────────┐
-│                  前端 (WebView)                   │
-│   CodeMirror 5  │  highlight.js  │    KaTeX      │
-│     Mermaid     │  html2canvas   │     ...       │
+│                 Frontend (WebView)                 │
+│   CodeMirror 5  │  highlight.js  │    KaTeX       │
+│     Mermaid     │  html2canvas   │     ...        │
 └──────────────┬───────────────────────────────────┘
                │ IPC (ipc: / tauri:)
 ┌──────────────┴───────────────────────────────────┐
-│                  后端 (Rust)                      │
-│     Tauri 2.5    │    pulldown-cmark              │
-│     文件 I/O     │     系统对话框                  │
+│                  Backend (Rust)                    │
+│     Tauri 2.5    │    pulldown-cmark               │
+│     File I/O     │    Native Dialogs               │
 └──────────────┬───────────────────────────────────┘
                │
         ┌──────┴──────┐
@@ -212,69 +221,69 @@ npm run build    # 构建发布版本
         └─────────────┘
 ```
 
-> Tauri v2 使用系统原生 WebView，安装包仅 ~7MB，内存占用不到 Electron 类应用的 1/5。**三平台安装包均由 CI 自动构建发布。**
+> Tauri v2 uses the OS native WebView — ~7MB installer, ~1/5 the footprint of Electron-based alternatives. **Installers for all three platforms are built and published by CI automatically.**
 
 ---
 
-## 常见问题
+## FAQ
 
 <details open>
-<summary><b>vsnote 是免费的吗？</b></summary>
+<summary><b>Is vsnote really free?</b></summary>
 
-是的，永久免费且开源。基础功能没有任何限制。
+Yes. Free forever, open source, no feature paywalls.
 </details>
 
 <details open>
-<summary><b>vsnote 和 TizuMark 是什么关系？</b></summary>
+<summary><b>What's the relationship between vsnote and TizuMark?</b></summary>
 
-vsnote 是基于 [TizuMark](https://github.com/tizuio/TizuMark) 的增强分支，保留了原项目全部能力，并增加了 VSCode 快捷键方案、文件树拖拽移动/右键菜单、三平台 CI 自动发布等修改，详见[「相对原项目的修改」](#-相对原项目的修改)。
+vsnote is an enhanced fork of [TizuMark](https://github.com/tizuio/TizuMark). It keeps everything from the original and adds the VSCode shortcut preset, file tree drag-to-move & context menu, three-platform CI releases, and more — see [Changes vs. the original project](#-changes-vs-the-original-project).
 </details>
 
 <details open>
-<summary><b>如何恢复默认设置？</b></summary>
+<summary><b>How do I restore default settings?</b></summary>
 
-在 `文件 → 设置` 或 `文件 → 快捷键设置` 中点击「恢复默认」按钮即可。
+Click "Restore Default" in `File → Settings` or `File → Keyboard Shortcuts`.
 </details>
 
 <details open>
-<summary><b>支持哪些文件格式？</b></summary>
+<summary><b>What file formats are supported?</b></summary>
 
-支持 `.md`、`.markdown` 文件；`.txt` / `.log` 等纯文本按纯文本模式打开，`.js` / `.json` 等代码文件按各自语法着色。更多格式支持计划中。
+`.md`, `.markdown`; `.txt` / `.log` open in plain-text mode, code files like `.js` / `.json` keep their own syntax highlighting. More coming.
 </details>
 
 <details open>
-<summary><b>如何反馈问题或建议？</b></summary>
+<summary><b>How do I report a bug or request a feature?</b></summary>
 
 - [GitHub Issues](https://github.com/AlexIllinois2/vsnote/issues)
-- 原项目相关问题也可前往 [TizuMark Issues](https://github.com/tizuio/TizuMark/issues)
+- Issues inherited from the original project may also go to [TizuMark Issues](https://github.com/tizuio/TizuMark/issues)
 </details>
 
 ---
 
-## 致谢
+## Acknowledgements
 
-- 感谢原作者 [@tizu](https://github.com/tizuio) 与 [TizuMark](https://github.com/tizuio/TizuMark) 项目——vsnote 的一切基础都来自它，如果觉得好用，请也给原项目点个 Star。
-- 原项目主页：[GitHub](https://github.com/tizuio/TizuMark) · [Gitee](https://gitee.com/tizu/tizu-mark)
+- Thanks to the original author [@tizu](https://github.com/tizuio) and the [TizuMark](https://github.com/tizuio/TizuMark) project — everything in vsnote is built on top of it. If you find this useful, please star the original project too.
+- Original project home: [GitHub](https://github.com/tizuio/TizuMark) · [Gitee](https://gitee.com/tizu/tizu-mark)
 
 ---
 
-## 许可证
+## License
 
 Copyright (c) 2024-2026 TizuMark
 
-本软件基于 [GNU General Public License v3.0](LICENSE) 开源发布。你可以自由使用、修改和分发，但衍生作品必须延续 GPL v3 协议。vsnote 作为 TizuMark 的衍生作品，同样以 GPL v3 继续开源。
+This software is released under the [GNU General Public License v3.0](LICENSE). You are free to use, modify, and distribute it, but derivative works must remain under GPL v3. As a derivative work of TizuMark, vsnote remains open source under the same GPL v3.
 
-内置开源组件按其各自许可证授权，详见应用内 `帮助 → 关于` 页面。
+Bundled open-source components are licensed under their respective terms. See `Help → About` in the app for details.
 
 ---
 
 <p align="center">
-  <b>✨ vsnote — 轻得不像话，快得刚刚好</b><br><br>
-  <a href="https://github.com/AlexIllinois2/vsnote/releases"><img src="https://img.shields.io/badge/⬇_GitHub_下载-black?style=for-the-badge&logo=github" alt="GitHub Download"></a>
+  <b>✨ vsnote — Stupidly light. Exactly fast enough.</b><br><br>
+  <a href="https://github.com/AlexIllinois2/vsnote/releases"><img src="https://img.shields.io/badge/⬇_Download_from_GitHub-black?style=for-the-badge&logo=github" alt="GitHub Download"></a>
   <br><br>
   <a href="https://github.com/AlexIllinois2/vsnote">⭐ GitHub Star</a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/AlexIllinois2/vsnote/issues">🐛 反馈问题</a>
+  <a href="https://github.com/AlexIllinois2/vsnote/issues">🐛 Report Bug</a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/tizuio/TizuMark">原项目 TizuMark</a>
+  <a href="https://github.com/tizuio/TizuMark">Original Project: TizuMark</a>
 </p>

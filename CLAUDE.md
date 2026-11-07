@@ -123,8 +123,8 @@ release body 用以下格式，不得更改：
 | `src-tauri/tauri.conf.json`  | `"version"`                                                    | 构建必需，运行时 `getVersion()` 读取此值            |
 | `src-tauri/Cargo.toml`       | `version = "..."`                                              | 构建必需                                    |
 | `update-windows-x86_64.json` | `"version"` + 下载 URL 中的 `v{version}`                           | 在步骤 5 一并更新                              |
-| `README.md`                  | 第 18 行 Version badge `Version-{version}-blue`                  | 文档展示                                    |
-| `README.en.md`               | 第 18 行 Version badge `Version-{version}-blue`                  | 英文文档展示                                  |
+| `README.md`                  | 第 18 行 Version badge `Version-{version}-blue`                  | 英文文档展示                                  |
+| `README.zh-CN.md`            | 第 18 行 Version badge `Version-{version}-blue`                  | 中文文档展示                                  |
 | `src/app.js`                 | 中文 i18n `versionInfo: 'TizuMark v{version}'`（约 L207）           | 关于对话框文本                                 |
 | `src/app.js`                 | 英文 i18n `versionInfo: 'TizuMark v{version}'`（约 L513）           | 关于对话框文本（英文）                             |
 | `src/index.html`             | `#about-version` 硬编码 `TizuMark v{version}`（约 L375）             | 关于对话框兜底（运行时会由 `getVersion()` 覆盖，但应保持同步） |
@@ -306,7 +306,7 @@ node -e "const https=require('https');https.get('https://gitee.com/api/v5/repos/
 #### 9. 提交推送
 
 ```bash
-git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/src/lib.rs src/app.js src/index.html src/styles.css update-windows-x86_64.json README.md README.en.md CLAUDE.md
+git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/src/lib.rs src/app.js src/index.html src/styles.css update-windows-x86_64.json README.md README.zh-CN.md CLAUDE.md
 git commit -m "chore: bump version to {version}"
 git push
 ```

@@ -28,8 +28,8 @@ description: "TizuMark 发布流程：版本号更新、构建三种安装包、
 | `src-tauri/tauri.conf.json` | `"version"` | 构建必需，`getVersion()` 读取此值 |
 | `src-tauri/Cargo.toml` | `version = "..."` | 构建必需 |
 | `update-windows-x86_64.json` | `"version"` + 下载 URL | 在步骤 5 一并更新 |
-| `README.md` | Version badge `Version-{version}-blue` | 文档展示 |
-| `README.en.md` | Version badge `Version-{version}-blue` | 英文文档展示 |
+| `README.md` | Version badge `Version-{version}-blue` | 英文文档展示 |
+| `README.zh-CN.md` | Version badge `Version-{version}-blue` | 中文文档展示 |
 | `src/app.js` | 中文 i18n `versionInfo: 'TizuMark v{version}'` | 关于对话框 |
 | `src/app.js` | 英文 i18n `versionInfo: 'TizuMark v{version}'` | 关于对话框（英文） |
 | `src/index.html` | `#about-version` 硬编码 | 兜底文本 |
@@ -255,7 +255,7 @@ node -e "const https=require('https');https.get('https://gitee.com/api/v5/repos/
 ## 步骤 9：提交推送
 
 ```powershell
-git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/src/lib.rs src/app.js src/index.html src/styles.css update-windows-x86_64.json README.md README.en.md CLAUDE.md
+git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/src/lib.rs src/app.js src/index.html src/styles.css update-windows-x86_64.json README.md README.zh-CN.md CLAUDE.md
 git commit -m "chore: bump version to {version}"
 git push
 ```

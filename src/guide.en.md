@@ -352,7 +352,6 @@ All options are available in `File → Settings`:
 |---------|---------|---------|-------------|
 | Language | 中文 / English | 中文 | Switch the entire UI language |
 | Theme Mode | Light / Dark / Follow System | Follow System | Light/dark background, or match OS |
-| Color Scheme | Base / Sunset / Forest / Nord / Dusk | Base | Overall UI color style |
 | Font Scheme | Minimalist (sans-serif) / Print Style (serif) | Print Style | Preview body font family style |
 
 > Click the sun/moon icon in the toolbar to quickly toggle between Light and Dark.

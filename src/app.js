@@ -236,12 +236,6 @@ const I18N = {
     language: '界面语言',
     behavior: '行为',
     themeMode: '主题模式',
-    colorScheme: '配色方案',
-    schemeDefault: '基准',
-    schemeForest: '翠林风',
-    schemeNord: '极夜风',
-    schemeDusk: '暮紫风',
-    schemeSunset: '暖橙风',
     defaultView: '默认视图',
     plainTextMode: '纯文本模式',
     plainTextModeHint: 'txt / log 等非 Markdown 文件按纯文本打开：不做 Markdown 语法着色与预览排版，Enter 不续写列表和表格，格式工具栏收起，保存时保留文件原有换行符（CRLF / LF）。关闭后所有文件一律按 Markdown 处理。',
@@ -644,12 +638,6 @@ const I18N = {
     language: 'Language',
     behavior: 'Behavior',
     themeMode: 'Theme Mode',
-    colorScheme: 'Color Scheme',
-    schemeDefault: 'Default',
-    schemeForest: 'Forest',
-    schemeNord: 'Nord',
-    schemeDusk: 'Dusk',
-    schemeSunset: 'Sunset',
     defaultView: 'Default View',
     plainTextMode: 'Plain Text Mode',
     plainTextModeHint: 'Open .txt / .log and other non-Markdown files as plain text: no Markdown highlighting or reflowed preview, no list/table continuation on Enter, the format toolbar is hidden, and saving keeps the file\u2019s original line endings (CRLF / LF). Turn this off to treat every file as Markdown.',
@@ -1195,7 +1183,6 @@ class MarkdownEditor {
     setSectionTitle('set-language', t('basic'));
     setRowLabel('set-language', t('language'));
     setRowLabel('set-theme-mode', t('themeMode'));
-    setRowLabel('set-color-scheme', t('colorScheme'));
     setRowLabel('set-font-scheme', t('fontScheme'));
     setSectionTitle('set-font-size', t('editor'));
     setRowLabel('set-font-size', t('fontSize'));
@@ -1238,15 +1225,6 @@ class MarkdownEditor {
     document.getElementById('settings-close-x').setAttribute('aria-label', t('cancel'));
     document.getElementById('confirm-dialog-confirm').textContent = t('confirm');
     document.getElementById('confirm-dialog-cancel').textContent = t('cancel');
-    // Update color scheme options text
-    const csSelect = document.getElementById('set-color-scheme');
-    if (csSelect) {
-      csSelect.options[0].text = t('schemeDefault');
-      csSelect.options[1].text = t('schemeSunset');
-      csSelect.options[2].text = t('schemeForest');
-      csSelect.options[3].text = t('schemeNord');
-      csSelect.options[4].text = t('schemeDusk');
-    }
     // Update font scheme options text
     const fsSelect = document.getElementById('set-font-scheme');
     if (fsSelect) {
@@ -1536,7 +1514,6 @@ class MarkdownEditor {
       lineHeight: 1.7,
       maxWidth: 0,
       themeMode: 'system',
-      colorScheme: 'default',
       fontScheme: 'system-sans',
       defaultView: 'edit',
       previewPaneWidth: 360,
@@ -1565,17 +1542,10 @@ class MarkdownEditor {
     const defaults = this.defaultSettings();
     try {
       const saved = this._validConfigObject(JSON.parse(localStorage.getItem('tizumark-settings')));
-      // 向后兼容：旧版本没有 fontScheme 时，从配色方案推断
-      if (saved && saved.fontScheme === undefined) {
-        const colorSchemeFontMap = {
-          default: 'system-sans',
-          forest: 'system-sans',
-          nord: 'system-sans',
-          dusk: 'system-sans',
-          sunset: 'system-sans',
-        };
-        saved.fontScheme = colorSchemeFontMap[saved.colorScheme] || 'system-sans';
-      }
+      // 配色方案功能已移除：丢弃旧配置中的 colorScheme 键，避免无主字段回写
+      if (saved) delete saved.colorScheme;
+      // 向后兼容：旧版本没有 fontScheme 时统一使用简约字体
+      if (saved && saved.fontScheme === undefined) saved.fontScheme = 'system-sans';
       // 类型校验：丢弃与默认值类型不符的字段，避免字符串/布尔错位污染 UI 与回写
       const merged = { ...defaults, ...saved };
       for (const k of Object.keys(merged)) {
@@ -1761,7 +1731,6 @@ class MarkdownEditor {
     document.getElementById('set-line-height').value = s.lineHeight;
     document.getElementById('set-max-width').value = s.maxWidth;
     document.getElementById('set-theme-mode').value = s.themeMode;
-    document.getElementById('set-color-scheme').value = s.colorScheme || 'default';
     document.getElementById('set-font-scheme').value = s.fontScheme || 'system-sans';
     document.getElementById('set-default-view').value = s.defaultView;
     document.getElementById('set-plain-text-mode').checked = s.plainTextMode;
@@ -1831,11 +1800,6 @@ class MarkdownEditor {
     });
     document.getElementById('set-theme-mode').addEventListener('change', async (e) => {
       this.settings.themeMode = e.target.value;
-      await this.applyThemeMode();
-      this.saveSettings();
-    });
-    document.getElementById('set-color-scheme').addEventListener('change', async (e) => {
-      this.settings.colorScheme = e.target.value;
       await this.applyThemeMode();
       this.saveSettings();
     });
@@ -2428,7 +2392,6 @@ class MarkdownEditor {
       this.isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
     document.documentElement.setAttribute('data-theme', this.isDark ? 'dark' : 'light');
-    document.documentElement.setAttribute('data-color-scheme', this.settings.colorScheme || 'default');
     this.cm.setOption('theme', this.isDark ? 'material-darker' : 'default');
     this.updateThemeIcon();
     const highlightTheme = document.getElementById('highlight-theme');
@@ -2525,7 +2488,6 @@ class MarkdownEditor {
     document.getElementById('set-line-height').value = defaults.lineHeight;
     document.getElementById('set-max-width').value = defaults.maxWidth;
     document.getElementById('set-theme-mode').value = defaults.themeMode;
-    document.getElementById('set-color-scheme').value = defaults.colorScheme;
     document.getElementById('set-font-scheme').value = defaults.fontScheme;
     document.getElementById('set-default-view').value = defaults.defaultView;
     document.getElementById('set-plain-text-mode').checked = defaults.plainTextMode;
@@ -5210,7 +5172,7 @@ class MarkdownEditor {
   // ===== 选中内容高亮（VSCode selectionHighlight 行为）=====
   // 选中非空文本后，为当前文件中所有相同内容加主题色描边（多行选区同样支持）。
   // 规则：区分大小写的字面子串匹配（不做整词边界限制，选中 zip 也能高亮 xxzip 中的 zip）；
-  // 跳过选区自身；上限 200 字符 / 500 处；超大文档（>2MB）跳过以保证流畅。
+  // 跳过选区自身；纯空白/纯标点符号不触发；上限 200 字符 / 500 处；超大文档（>2MB）跳过以保证流畅。
   _scheduleSelectionMatches() {
     clearTimeout(this._selMatchTimer);
     const sels = this.cm.listSelections();
@@ -5229,6 +5191,8 @@ class MarkdownEditor {
     for (const sel of sels) {
       const text = this.cm.getRange(sel.from(), sel.to());
       if (!text || text.length > 200) continue; // 空选区 / 超长选区不触发
+      // 只有空白或只有标点/符号的选区不触发相同内容高亮（要求至少含一个文字或数字）
+      if (!/[\p{L}\p{N}]/u.test(text)) continue;
       texts.add(text);
       selRanges.push([this.cm.indexFromPos(sel.from()), this.cm.indexFromPos(sel.to())]);
     }
@@ -7187,7 +7151,6 @@ class MarkdownEditor {
 
   async renderFolderLevel(dirPath, containerEl, depth) {
     if (depth > 20) return; // 防御：限制目录递归深度，避免深层嵌套/符号链接环导致浏览器卡死
-    const CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>';
     const FOLDER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
     const FOLDER_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H3z"/><path d="M3 10h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
     const FILE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/></svg>';
@@ -7207,9 +7170,6 @@ class MarkdownEditor {
       row.className = 'tree-row';
       row.style.paddingLeft = (8 + depth * 14) + 'px';
 
-      const arrow = document.createElement('span');
-      arrow.className = 'tree-arrow';
-      arrow.innerHTML = CHEVRON;
       const icon = document.createElement('span');
       const label = document.createElement('span');
       label.className = 'tree-label';
@@ -7248,7 +7208,6 @@ class MarkdownEditor {
           this.saveSession();
         });
       } else {
-        arrow.innerHTML = '';
         icon.className = 'tree-icon file';
         icon.innerHTML = FILE;
         node.appendChild(row);
@@ -7258,7 +7217,6 @@ class MarkdownEditor {
           this.openFilePath(entry.path);
         });
       }
-      row.appendChild(arrow);
       row.appendChild(icon);
       row.appendChild(label);
       containerEl.appendChild(node);
@@ -7945,16 +7903,16 @@ class MarkdownEditor {
   <meta charset="UTF-8">
   <title>${escapedTitle}</title>
   <style>
-    body { max-width: 860px; margin: 0 auto; padding: 40px 20px; line-height: 1.8; color: #2a2a2e; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    h1, h2, h3, h4, h5, h6 { margin-top: 24px; margin-bottom: 12px; font-weight: 600; line-height: 1.3; }
+    body { max-width: 860px; margin: 0 auto; padding: 40px 20px; line-height: 1.8; color: #2a2a2e; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; --heading-color: #616161; --heading-link-color: #0055aa; }
+    h1, h2, h3, h4, h5, h6 { margin-top: 24px; margin-bottom: 12px; font-weight: 600; line-height: 1.3; color: var(--heading-color); }
     h1 { font-size: 2em; border-bottom: 2px solid #d4d4d8; padding-bottom: 10px; }
     h2 { font-size: 1.5em; border-bottom: 1px solid #d4d4d8; padding-bottom: 8px; }
     h3 { font-size: 1.25em; }
     h4 { font-size: 1.1em; }
-    h5 { font-size: 1em; color: #5e5e62; }
-    h6 { font-size: 0.9em; color: #5e5e62; }
+    h5 { font-size: 1em; }
+    h6 { font-size: 0.9em; }
     p { margin-bottom: 14px; }
-    a { color: #2563eb; text-decoration: none; }
+    a { color: var(--heading-link-color); text-decoration: none; }
     a:hover { text-decoration: underline; }
     strong { font-weight: 600; }
     em { font-style: italic; }
@@ -7989,7 +7947,7 @@ class MarkdownEditor {
     .toc-wrapper { padding: 12px 16px; margin: 16px 0; background: #f6f5f4; border-radius: 8px; border: 1px solid #d4d4d8; }
     .toc-list ul { list-style: none; padding-left: 16px; margin: 2px 0; }
     .toc-list li { margin-bottom: 3px; line-height: 1.6; }
-.toc a { color: #2563eb; text-decoration: underline; font-size: 0.92em; }
+.toc a { color: var(--heading-link-color); text-decoration: underline; font-size: 0.92em; }
 input[type="checkbox"] { -webkit-appearance: none; appearance: none; margin-right: 8px; width: 16px; height: 16px; border: 1.5px solid #d4d4d8; border-radius: 3px; vertical-align: middle; position: relative; top: -1px; cursor: default; }
 input[type="checkbox"]:checked { background: #16a34a url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIzIiBmaWxsPSJub25lIj48cGF0aCBkPSJNNSAxM2w0IDRMMTkgNyIvPjwvc3ZnPg==") center / 14px no-repeat; border-color: #16a34a; }
     input[type="checkbox"] { -webkit-appearance: none; appearance: none; margin-right: 8px; width: 16px; height: 16px; border: 1.5px solid #d4d4d8; border-radius: 3px; vertical-align: middle; position: relative; top: -1px; cursor: default; }
@@ -8190,8 +8148,6 @@ ${clone.innerHTML}
       let katexCSS = '';
       try { const resp = await fetch('lib/katex/katex.min.css'); if (resp.ok) katexCSS = await resp.text(); } catch (e) { /* skip */ }
 
-      const colorScheme = document.documentElement.getAttribute('data-color-scheme') || 'default';
-
       const printCSS = `
 @page { margin: 1.5cm; }
 html, body { margin: 0 !important; padding: 0 !important; background: white !important; }
@@ -8211,7 +8167,7 @@ input[type="checkbox"]:checked::after { display: none !important; }
 `;
 
       const html = `<!DOCTYPE html>
-<html lang="zh-CN" data-color-scheme="${colorScheme}" data-theme="light">
+<html lang="zh-CN" data-theme="light">
 <head><meta charset="UTF-8"><title>${escapedTitle}</title>
 <style>${appCSS}${hljsCSS}${katexCSS}${printCSS}</style></head>
 <body>
@@ -9949,10 +9905,18 @@ input[type="checkbox"]:checked::after { display: none !important; }
       }
     }
     try {
-      const ver = await window.__TAURI__.app.getVersion();
+      // 优先展示带构建唯一标识的完整版本（如 1.1.0-20261108-685f2b0f）；
+      // 更新检查仍以 app.getVersion() 的纯 semver 基础版本为准，两者互不影响。
+      const ver = await window.__TAURI__.core.invoke('get_build_version');
       const el = document.getElementById('about-version');
       if (el) el.textContent = 'TizuMark v' + ver;
-    } catch (_) {}
+    } catch (_) {
+      try {
+        const ver = await window.__TAURI__.app.getVersion();
+        const el = document.getElementById('about-version');
+        if (el) el.textContent = 'TizuMark v' + ver;
+      } catch (_) {}
+    }
   }
 
   hideAbout() {

@@ -234,6 +234,14 @@ fn get_cli_args() -> Vec<String> {
     std::env::args().skip(1).collect()
 }
 
+/// 带构建唯一标识的完整版本号（如 1.1.0-20261108-685f2b0f）。
+/// 由 scripts/build-version.mjs 生成、src-tauri/build.rs 在编译期注入；
+/// 未注入时回落到 Cargo 版本，不影响更新检查所用的 semver 基础版本。
+#[tauri::command]
+fn get_build_version() -> String {
+    env!("VSNOTE_BUILD_VERSION").to_string()
+}
+
 // 从单实例回调的完整 argv 中取出待打开文件：跳过 argv[0]（可执行文件路径本身）。
 // 与 get_cli_args（std::env::args().skip(1)）保持一致，避免把 exe 路径当文件打开。
 fn files_from_args(argv: Vec<String>) -> Vec<String> {
@@ -2589,6 +2597,7 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
         .invoke_handler(tauri::generate_handler![
             open_devtools,
             get_cli_args,
+            get_build_version,
             quit_app,
             read_file,
             write_file,

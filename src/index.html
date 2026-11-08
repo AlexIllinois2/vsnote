@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-color-scheme="default">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,17 +8,15 @@
        跟随系统（默认）时以 webview 的 prefers-color-scheme 为准，与 applyThemeMode 判定一致。 -->
   <script>
     (function () {
-      var mode = 'system', scheme = '';
+      var mode = 'system';
       try {
         var s = JSON.parse(localStorage.getItem('tizumark-settings') || '{}') || {};
         if (s.themeMode === 'light' || s.themeMode === 'dark' || s.themeMode === 'system') mode = s.themeMode;
-        if (typeof s.colorScheme === 'string' && /^[a-z-]{1,16}$/.test(s.colorScheme)) scheme = s.colorScheme;
-      } catch (e) { /* 设置损坏：按默认（跟随系统 + 基准配色） */ }
+      } catch (e) { /* 设置损坏：按默认（跟随系统） */ }
       var dark = mode === 'dark' ||
         (mode !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
       var root = document.documentElement;
       root.setAttribute('data-theme', dark ? 'dark' : 'light');
-      if (scheme) root.setAttribute('data-color-scheme', scheme);
     })();
   </script>
   <title>TizuMark</title>
@@ -118,9 +116,6 @@
             <svg class="icon-collapse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect x="3" y="4" width="18" height="16" rx="2"/>
               <line x1="9.5" y1="4" x2="9.5" y2="20"/>
-            </svg>
-            <svg class="icon-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="16" rx="2"/>
             </svg>
           </button>
           <div class="dropdown">
@@ -325,7 +320,6 @@
         </button>
         <button class="fmt-btn fmt-icon-btn fmt-preview-toggle" id="btn-side-right" title="折叠预览">
           <svg class="icon icon-collapse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M15 3v18"/></svg>
-          <svg class="icon icon-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/></svg>
         </button>
       </div>
     </header>
@@ -955,16 +949,6 @@
               <option value="light" selected>明亮</option>
               <option value="dark">暗黑</option>
               <option value="system">跟随系统</option>
-            </select>
-          </div>
-          <div class="settings-row">
-            <label>配色方案</label>
-            <select id="set-color-scheme">
-              <option value="default">基准</option>
-              <option value="sunset">暖橙风</option>
-              <option value="forest">翠林风</option>
-              <option value="nord">极夜风</option>
-              <option value="dusk">暮紫风</option>
             </select>
           </div>
           <div class="settings-row">

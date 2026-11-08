@@ -59,24 +59,9 @@ VERSION="$(node -p "require('./package.json').version" 2>/dev/null || true)"
 [ -n "$VERSION" ] || VERSION="$(grep -m1 '"version"' package.json | sed -E 's/.*"version"[^0-9]*([0-9.]+).*/\1/')"
 log "版本号: ${VERSION}"
 
-# ---------------------------------------------- 1.5 构建唯一标识（RPM Release）
-# RPM 的 Version 字段不允许出现 '-'（'-' 是 version 与 release 的分隔符），
-# 因此把本次打包的唯一标识放进 Release 字段：
-#   <提交数>.<短 hash>.<UTC 时间戳>   → 1.1.0-157.25baae5.20261101193012
-# 提交数保证 EVR 单调递增，时间戳保证同一提交重复打包也一定是新版本，
-# 这样 dnf 不会因为 "同版本" 而跳过更新。
-RPM_RELEASE="${RELEASE:-}"
-if [ -z "$RPM_RELEASE" ]; then
-  BUILD_STAMP="$(date -u +%Y%m%d%H%M%S)"
-  if command -v git >/dev/null 2>&1 && git -C "$SRC_ROOT" rev-parse --short HEAD >/dev/null 2>&1; then
-    COMMIT_COUNT="$(git -C "$SRC_ROOT" rev-list --count HEAD 2>/dev/null || echo 0)"
-    COMMIT_SHA="$(git -C "$SRC_ROOT" rev-parse --short HEAD)"
-    RPM_RELEASE="${COMMIT_COUNT}.${COMMIT_SHA}.${BUILD_STAMP}"
-  else
-    RPM_RELEASE="$BUILD_STAMP"
-  fi
-fi
-log "构建标识(RPM Release): ${RPM_RELEASE}  →  版本 ${VERSION}-${RPM_RELEASE}"
+# ---------------------------------------------- 1.5 构建唯一标识
+# 由 scripts/build-version.mjs 统一生成（Node 环境就绪后见 5.5 节），
+# 与 npm run build:rpm 共用同一套版本/Release 规则，避免两套标识互相干扰排序。
 
 # ------------------------------------------------------------ 2. 国内镜像开关
 if [ "${VSNOTE_CN_MIRROR:-0}" = "1" ]; then
@@ -197,6 +182,22 @@ log "Node: $(node --version) / npm: $(npm --version) [path=$(command -v node)]"
 if [ "${VSNOTE_CN_MIRROR:-0}" = "1" ]; then
   npm config set registry https://registry.npmmirror.com
 fi
+
+# ------------------------------------------ 5.5 构建唯一标识（RPM Release）
+# 与 npm run build:rpm 共用 scripts/build-version.mjs：
+#   应用内展示版本 = <基础版本>-<YYYYMMDD>-<8 位随机码>
+#   RPM Release    = <YYYYMMDD>.<HHMMSS>.<8 位随机码>
+# 日期参与排序、时间保证同一天多次构建也严格递增，随机码只做区分；
+# Release 用 '.' 而非 '-'，符合 RPM 字段约束，且 EVR 必须大于旧的 Release=1。
+if [ -n "${RELEASE:-}" ]; then
+  RPM_RELEASE="$RELEASE"
+  VSNOTE_BUILD_VERSION="${VERSION}-${RELEASE}"
+else
+  eval "$(node "${WORKDIR}/scripts/build-version.mjs" --shell)"
+  RPM_RELEASE="$VSNOTE_RPM_RELEASE"
+fi
+export VSNOTE_BUILD_VERSION
+log "构建版本: ${VSNOTE_BUILD_VERSION}（RPM EVR: ${VERSION}-${RPM_RELEASE}）"
 
 # ------------------------------- 6. 移除 Windows 专用 patch（Linux 下必须去掉）
 CARGO_TOML="src-tauri/Cargo.toml"

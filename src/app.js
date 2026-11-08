@@ -253,7 +253,6 @@ const I18N = {
     resetDefault: '恢复默认',
     done: '完成',
     confirm: '确认',
-    themeSwitched: '已切换到{theme}主题',
     basic: '基本',
     fontScheme: '字体方案',
     fontSchemeSystemSans: '简约风格',
@@ -298,7 +297,7 @@ const I18N = {
     noUnauthorized: '欢迎自由使用、修改和分发，衍生作品须延续 GPL v3 协议。',
     shortcutLabel: { newFile: '新建文件', openFile: '打开文件', saveFile: '保存文件', closeTab: '关闭标签页', find: '查找替换', crossSearch: '跨文件搜索', fileSearch: '文件搜索',
     globalSearch: '全局搜索',
-    toggleSidebar: '显示/隐藏侧边栏', nextTab: '下一个标签页', prevTab: '上一个标签页', bold: '加粗', italic: '斜体', insertLink: '插入链接', exportPDF: '导出 PDF', inlineCode: '行内代码', strikethrough: '删除线', codeBlock: '代码块', blockquote: '引用块', toggleView: '切换视图', toggleTheme: '切换主题', saveAs: '另存为', insertTable: '插入表格', insertImage: '插入图片', insertUl: '无序列表', insertOl: '有序列表', insertTask: '任务列表', insertHr: '水平线', highlight: '高亮标记', insertSuperscript: '上标', insertSubscript: '下标', insertH1: '标题1', insertH2: '标题2', insertH3: '标题3', insertH4: '标题4', insertH5: '标题5', insertH6: '标题6', insertMathBlock: '数学公式', insertMermaid: 'Mermaid 图表', insertToc: '目录', insertCalloutNote: 'Note 提示', insertCalloutTip: 'Tip 建议', insertCalloutWarning: 'Warning 警告', insertCalloutCaution: 'Caution 注意',     insertCalloutImportant: 'Important 重要', moveLineUp: '上移行/选区', moveLineDown: '下移行/选区' },
+    toggleSidebar: '显示/隐藏侧边栏', nextTab: '下一个标签页', prevTab: '上一个标签页', bold: '加粗', italic: '斜体', insertLink: '插入链接', exportPDF: '导出 PDF', inlineCode: '行内代码', strikethrough: '删除线', codeBlock: '代码块', blockquote: '引用块', toggleView: '切换视图', saveAs: '另存为', insertTable: '插入表格', insertImage: '插入图片', insertUl: '无序列表', insertOl: '有序列表', insertTask: '任务列表', insertHr: '水平线', highlight: '高亮标记', insertSuperscript: '上标', insertSubscript: '下标', insertH1: '标题1', insertH2: '标题2', insertH3: '标题3', insertH4: '标题4', insertH5: '标题5', insertH6: '标题6', insertMathBlock: '数学公式', insertMermaid: 'Mermaid 图表', insertToc: '目录', insertCalloutNote: 'Note 提示', insertCalloutTip: 'Tip 建议', insertCalloutWarning: 'Warning 警告', insertCalloutCaution: 'Caution 注意',     insertCalloutImportant: 'Important 重要', moveLineUp: '上移行/选区', moveLineDown: '下移行/选区' },
     shortcutGroup: { file: '文件', search: '查找与搜索', tabView: '标签页与视图', format: '文本格式', insert: '插入', heading: '标题', callout: '提示块' },
     shortcutScheme: '快捷键方案',
     shortcutList: '快捷键',
@@ -655,7 +654,6 @@ const I18N = {
     resetDefault: 'Reset Default',
     done: 'Done',
     confirm: 'Confirm',
-    themeSwitched: 'Switched to {theme} theme',
     basic: 'Basic',
     fontScheme: 'Font Scheme',
     fontSchemeSystemSans: 'Minimalist',
@@ -700,7 +698,7 @@ const I18N = {
     noUnauthorized: 'Free to use, modify, and distribute. Derivative works must remain under GPL v3.',
     shortcutLabel: { newFile: 'New File', openFile: 'Open File', saveFile: 'Save File', closeTab: 'Close Tab', find: 'Find & Replace', crossSearch: 'Cross-file Search', fileSearch: 'File Search',
     globalSearch: 'Global Search',
-    toggleSidebar: 'Toggle Sidebar', nextTab: 'Next Tab', prevTab: 'Previous Tab', bold: 'Bold', italic: 'Italic', insertLink: 'Insert Link', exportPDF: 'Export PDF', inlineCode: 'Inline Code', strikethrough: 'Strikethrough', codeBlock: 'Code Block', blockquote: 'Blockquote', toggleView: 'Toggle View', toggleTheme: 'Toggle Theme', saveAs: 'Save As', insertTable: 'Insert Table', insertImage: 'Insert Image', insertUl: 'Unordered List', insertOl: 'Ordered List', insertTask: 'Task List', insertHr: 'Horizontal Rule', highlight: 'Highlight', insertSuperscript: 'Superscript', insertSubscript: 'Subscript', insertH1: 'Heading 1', insertH2: 'Heading 2', insertH3: 'Heading 3', insertH4: 'Heading 4', insertH5: 'Heading 5', insertH6: 'Heading 6', insertMathBlock: 'Math Block', insertMermaid: 'Mermaid Diagram', insertToc: 'Table of Contents', insertCalloutNote: 'Callout Note', insertCalloutTip: 'Callout Tip', insertCalloutWarning: 'Callout Warning', insertCalloutCaution: 'Callout Caution',     insertCalloutImportant: 'Callout Important', moveLineUp: 'Move Line/Selection Up', moveLineDown: 'Move Line/Selection Down' },
+    toggleSidebar: 'Toggle Sidebar', nextTab: 'Next Tab', prevTab: 'Previous Tab', bold: 'Bold', italic: 'Italic', insertLink: 'Insert Link', exportPDF: 'Export PDF', inlineCode: 'Inline Code', strikethrough: 'Strikethrough', codeBlock: 'Code Block', blockquote: 'Blockquote', toggleView: 'Toggle View', saveAs: 'Save As', insertTable: 'Insert Table', insertImage: 'Insert Image', insertUl: 'Unordered List', insertOl: 'Ordered List', insertTask: 'Task List', insertHr: 'Horizontal Rule', highlight: 'Highlight', insertSuperscript: 'Superscript', insertSubscript: 'Subscript', insertH1: 'Heading 1', insertH2: 'Heading 2', insertH3: 'Heading 3', insertH4: 'Heading 4', insertH5: 'Heading 5', insertH6: 'Heading 6', insertMathBlock: 'Math Block', insertMermaid: 'Mermaid Diagram', insertToc: 'Table of Contents', insertCalloutNote: 'Callout Note', insertCalloutTip: 'Callout Tip', insertCalloutWarning: 'Callout Warning', insertCalloutCaution: 'Callout Caution',     insertCalloutImportant: 'Callout Important', moveLineUp: 'Move Line/Selection Up', moveLineDown: 'Move Line/Selection Down' },
     shortcutGroup: { file: 'File', search: 'Find & Search', tabView: 'Tabs & View', format: 'Text Format', insert: 'Insert', heading: 'Headings', callout: 'Callouts' },
     shortcutScheme: 'Shortcut Scheme',
     shortcutList: 'Shortcuts',
@@ -1141,9 +1139,6 @@ class MarkdownEditor {
 
     // View mode toggle（纯图标，无文字标签，只更新 tooltip）
     this.updateViewToggleTitle();
-
-    // Theme button（纯图标，状态靠 icon + tooltip 表达）
-    this.updateThemeIcon();
 
     // Window controls
     setTitle('btn-minimize', t('minimize'));
@@ -2393,7 +2388,6 @@ class MarkdownEditor {
     }
     document.documentElement.setAttribute('data-theme', this.isDark ? 'dark' : 'light');
     this.cm.setOption('theme', this.isDark ? 'material-darker' : 'default');
-    this.updateThemeIcon();
     const highlightTheme = document.getElementById('highlight-theme');
     if (highlightTheme) {
       highlightTheme.href = this.isDark
@@ -2556,7 +2550,6 @@ class MarkdownEditor {
       codeBlock: { key: 'Ctrl+Shift+C', label: '代码块' },
       blockquote: { key: 'Ctrl+Shift+Q', label: '引用块' },
       toggleView: { key: '', label: '切换视图' },
-      toggleTheme: { key: 'Ctrl+Shift+T', label: '切换主题' },
       saveAs: { key: '', label: '另存为' },
       crossSearch: { key: 'Ctrl+H', label: '跨文件搜索' },
       insertTable: { key: '', label: '插入表格' },
@@ -2597,7 +2590,7 @@ class MarkdownEditor {
         closeTab:'Ctrl+W', find:'Ctrl+F', crossSearch:'Ctrl+H',
         nextTab:'Ctrl+Tab', prevTab:'Ctrl+Shift+Tab',
         bold:'', italic:'Ctrl+I', inlineCode:'Ctrl+`', insertLink:'Ctrl+K',
-        insertMathBlock:'Ctrl+Shift+M', toggleTheme:'Ctrl+Shift+T',
+        insertMathBlock:'Ctrl+Shift+M',
         fileSearch:'Ctrl+P', globalSearch:'Ctrl+Shift+F',
         toggleSidebar:'Ctrl+B',
         moveLineUp:'Alt+ArrowUp', moveLineDown:'Alt+ArrowDown',
@@ -2608,7 +2601,7 @@ class MarkdownEditor {
         nextTab:'Ctrl+Tab', prevTab:'Ctrl+Shift+Tab',
         bold:'Ctrl+B', italic:'Ctrl+I', insertLink:'Ctrl+K', exportPDF:'Ctrl+P',
         inlineCode:'Ctrl+Shift+`', strikethrough:'Ctrl+Shift+5', codeBlock:'Ctrl+Shift+K',
-        blockquote:'Ctrl+Shift+Q', toggleTheme:'Ctrl+Shift+T',
+        blockquote:'Ctrl+Shift+Q',
         insertImage:'Ctrl+Shift+I', insertMathBlock:'Ctrl+Shift+M',
         insertH1:'Ctrl+1', insertH2:'Ctrl+2', insertH3:'Ctrl+3', insertH4:'Ctrl+4',
         insertH5:'Ctrl+5', insertH6:'Ctrl+6',
@@ -2618,7 +2611,7 @@ class MarkdownEditor {
         newFile:'Ctrl+N', openFile:'Ctrl+O', saveFile:'Ctrl+S', saveAs:'Ctrl+Shift+S',
         closeTab:'Ctrl+W', find:'Ctrl+F', crossSearch:'Ctrl+H',
         nextTab:'Ctrl+Tab', prevTab:'Ctrl+Shift+Tab',
-        exportPDF:'Ctrl+P', toggleTheme:'Ctrl+Shift+T',
+        exportPDF:'Ctrl+P',
         moveLineUp:'Alt+ArrowUp', moveLineDown:'Alt+ArrowDown',
       },
     };
@@ -2820,7 +2813,7 @@ class MarkdownEditor {
     const groups = [
       { key: 'file', ids: ['newFile', 'openFile', 'saveFile', 'saveAs', 'closeTab', 'exportPDF'] },
       { key: 'search', ids: ['find', 'crossSearch', 'fileSearch', 'globalSearch'] },
-      { key: 'tabView', ids: ['nextTab', 'prevTab', 'toggleView', 'toggleTheme', 'toggleSidebar'] },
+      { key: 'tabView', ids: ['nextTab', 'prevTab', 'toggleView', 'toggleSidebar'] },
       { key: 'format', ids: ['bold', 'italic', 'strikethrough', 'inlineCode', 'highlight', 'insertSuperscript', 'insertSubscript', 'moveLineUp', 'moveLineDown'] },
       { key: 'insert', ids: ['insertLink', 'insertImage', 'insertTable', 'insertUl', 'insertOl', 'insertTask', 'insertHr', 'codeBlock', 'blockquote', 'insertMathBlock', 'insertMermaid', 'insertToc'] },
       { key: 'heading', ids: ['insertH1', 'insertH2', 'insertH3', 'insertH4', 'insertH5', 'insertH6'] },
@@ -3099,7 +3092,6 @@ class MarkdownEditor {
       exportPDF: () => this.exportPDF(),
       saveAs: () => this.saveAsFile(),
       toggleView: () => this.toggleViewMode(),
-      toggleTheme: () => this.toggleTheme(),
       find: () => this.toggleFindPanel(),
       crossSearch: () => this.openCrossSearchDialog(),
       fileSearch: () => this.openFileSearchDialog(),
@@ -4332,7 +4324,6 @@ class MarkdownEditor {
       document.getElementById('file-menu').classList.add('hidden');
       this.showSettings();
     });
-    document.getElementById('btn-theme').addEventListener('click', () => this.toggleTheme());
     document.getElementById('btn-user-guide').addEventListener('click', () => {
       document.getElementById('help-menu').classList.add('hidden');
       this.openUserGuide();
@@ -9576,29 +9567,6 @@ input[type="checkbox"]:checked::after { display: none !important; }
     this.wordCountEl.textContent = `${this.t('words')}: ${words}`;
     this.charCountEl.textContent = `${this.t('chars')}: ${chars}`;
     this.lineCountEl.textContent = `${this.t('lines')}: ${lines}`;
-  }
-
-  async toggleTheme() {
-    // 只切换观感并固定为明/暗：跟随系统时从当前实际观感取反（isDark 已由 applyThemeMode 算出）
-    this.settings.themeMode = this.isDark ? 'light' : 'dark';
-    document.getElementById('set-theme-mode').value = this.settings.themeMode;
-    this.saveSettings();
-    await this.applyThemeMode();
-    this.setStatus(this.t('themeSwitched', { theme: this.isDark ? this.t('themeDark') : this.t('themeLight') }));
-  }
-
-  updateThemeIcon() {
-    const svg = document.getElementById('theme-icon');
-    if (!svg) return;
-    const btn = document.getElementById('btn-theme');
-    // 纯图标按钮：用 icon 形状 + tooltip 表达「当前态 / 点击后切到哪」
-    if (this.isDark) {
-      svg.innerHTML = '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>';
-      if (btn) btn.title = this.t('themeLight');
-    } else {
-      svg.innerHTML = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>';
-      if (btn) btn.title = this.t('themeDark');
-    }
   }
 
   loadTheme() {

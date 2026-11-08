@@ -317,12 +317,6 @@ body {
   color: var(--accent-text) !important;
 }
 
-/* 主题切换：纯图标，收窄为接近正方形 */
-#btn-theme {
-  padding: 0 5px;
-  justify-content: center;
-}
-
 /* 预览开关：纯图标，无胶囊背景/边框；hover 仅背景高亮（与其它菜单栏按钮一致），
    预览态不再保持选中高亮 */
 .view-mode-tab {

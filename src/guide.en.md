@@ -145,7 +145,7 @@ Git must be installed locally and remote credentials must work (your existing cr
 | <kbd>Esc</kbd> | Close Panel | <kbd>Ctrl</kbd> + <kbd>Tab</kbd> | Next Tab |
 | <kbd>Ctrl</kbd> + <kbd>\`</kbd> | Inline Code | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Tab</kbd> | Previous Tab |
 | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> | Strikethrough | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd> | Code Block |
-| <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Q</kbd> | Blockquote | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd> | Toggle Theme |
+| <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Q</kbd> | Blockquote |  |  |
 
 > All shortcuts are customizable in **`File → Keyboard Shortcuts`**. Click "Modify" and press your new key combination. Click "Clear" to remove, "Restore Default" to reset.
 > 

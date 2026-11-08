@@ -145,7 +145,7 @@ TizuMark 的界面分为四个主要区域：
 | <kbd>Esc</kbd> | 关闭面板 | <kbd>Ctrl</kbd> + <kbd>Tab</kbd> | 下一标签 |
 | <kbd>Ctrl</kbd> + <kbd>\`</kbd> | 行内代码 | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Tab</kbd> | 上一标签 |
 | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> | 删除线 | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd> | 代码块 |
-| <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Q</kbd> | 引用块 | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd> | 切换主题 |
+| <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Q</kbd> | 引用块 |  |  |
 
 > 所有快捷键均可在 **`文件 → 快捷键设置`** 中自定义。点击「修改」后按下新的组合键即可重新绑定；点击「清除」可移除，点击「恢复默认」可还原。
 > 

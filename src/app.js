@@ -1648,6 +1648,10 @@ class MarkdownEditor {
     } else if (container.dataset.plainCollapse === '1') {
       delete container.dataset.plainCollapse;
       container.classList.remove('preview-collapsed');
+      // 重新展开时立刻恢复用户拖拽的分屏宽度：applyViewMode 清空过内联 flex，
+      // 折叠期间 applyPreviewPaneWidth 又会因 preview-collapsed 提前返回，
+      // 不在这里补一次就会退回 CSS 的 flex:1（50/50）。
+      this.applyPreviewPaneWidth();
       this._syncPreviewCollapseButton(false);
     }
   }
@@ -7911,7 +7915,7 @@ class MarkdownEditor {
     code { padding: 2px 6px; background: #f0efee; border: 1px solid #d4d4d8; border-radius: 4px; font-family: "SF Mono", "Fira Code", monospace; font-size: 0.88em; }
     pre { padding: 16px; background: #f0efee; border-radius: 6px; overflow-x: auto; margin: 16px 0; max-width: 100%; border: 1px solid #d4d4d8; }
     pre code { padding: 0; background: none; border: none; font-size: 0.9em; line-height: 1.5; }
-    blockquote { padding: 12px 20px; margin: 0 0 16px 0; border-left: 4px solid #2563eb; background: #f6f5f4; border-radius: 0 6px 6px 0; color: #5e5e62; }
+    blockquote { padding: 12px 20px; margin: 0 0 16px 0; border-left: 4px solid #9a9a9a; background: #f6f5f4; border-radius: 0 6px 6px 0; color: #5e5e62; }
     blockquote p:last-child { margin-bottom: 0; }
     table { border-collapse: collapse; width: 100%; margin-bottom: 16px; }
     th, td { padding: 8px 12px; border: 1px solid #d4d4d8; text-align: left; }
@@ -9658,6 +9662,9 @@ input[type="checkbox"]:checked::after { display: none !important; }
     // 上面的 classList.remove 会抹掉 preview-collapsed；纯文本默认折叠预览，
     // 这里重新判定面板姿态（只碰 DOM：视图切换不需要重放编辑器选项）
     this._applyPaneMode();
+    // 同步补一次分屏宽度：上面的 clear 清掉了内联 flex，若此刻预览可见（Markdown 编辑视图）
+    // 必须立刻还原，不能只依赖 50ms 定时器（定时器可能因折叠态提前返回而白白跳过）。
+    this.applyPreviewPaneWidth();
 
     // 折叠期间被跳过的渲染必须在此补上，否则切到预览视图会看到过期内容
     if (this._previewRenderSkipped && this._previewPaneVisible()) {

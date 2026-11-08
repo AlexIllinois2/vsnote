@@ -49,12 +49,14 @@
   --text-primary: #3b3b3b;
   --text-secondary: #616161;
   --border-color: #e5e5e5;
-  --accent-color: #005fb8;
-  --accent-hover: #0258a8;
-  --accent-pressed: #024680;
-  --accent-subtle: rgba(0, 95, 184, 0.07);
-  --accent-muted: rgba(0, 95, 184, 0.15);
-  --accent-text: #ffffff;
+  /* 高亮统一为中性灰（简约商务）：再调浅一档，降低与白底的对比 */
+  --accent-color: #9a9a9a;
+  --accent-hover: #8f8f8f;
+  --accent-pressed: #848484;
+  --accent-subtle: rgba(0, 0, 0, 0.035);
+  --accent-muted: rgba(0, 0, 0, 0.09);
+  /* 浅灰底上用深色前景，避免浅底 + 白字看不清 */
+  --accent-text: #2b2b2b;
   --color-success: #1a7f37;
   --color-danger: #e51400;
   --color-warning: #bf8803;
@@ -66,8 +68,8 @@
   --heading-color: var(--text-secondary);
   --heading-h1-color: var(--text-primary);
   --heading-link-color: #0055aa;
-  --toc-bg: linear-gradient(135deg, #f2f6fc 0%, #e9f0f9 100%);
-  --toc-border: #d6e2f0;
+  --toc-bg: linear-gradient(135deg, #f7f7f7 0%, #efefef 100%);
+  --toc-border: #e2e2e2;
   --scrollbar-track: #f8f8f8;
   --scrollbar-thumb: #c1c1c1;
   --scrollbar-thumb-hover: #a8a8a8;
@@ -86,12 +88,14 @@
   --text-primary: #cccccc;
   --text-secondary: #9d9d9d;
   --border-color: #2b2b2b;
-  --accent-color: #0078d4;
-  --accent-hover: #026ec1;
-  --accent-pressed: #0258a8;
-  --accent-subtle: rgba(0, 120, 212, 0.10);
-  --accent-muted: rgba(0, 120, 212, 0.25);
-  --accent-text: #ffffff;
+  /* 高亮统一为中性灰（简约商务）：向深色背景收暗一档 */
+  --accent-color: #6f6f6f;
+  --accent-hover: #7c7c7c;
+  --accent-pressed: #5f5f5f;
+  --accent-subtle: rgba(255, 255, 255, 0.055);
+  --accent-muted: rgba(255, 255, 255, 0.14);
+  /* 深灰底上用浅色前景 */
+  --accent-text: #f2f2f2;
   --color-success: #3fb950;
   --color-danger: #f14c4c;
   --color-warning: #cca700;
@@ -309,7 +313,7 @@ body {
 
 .window-btn-close:hover {
   background-color: var(--color-danger);
-  color: var(--accent-text);
+  color: #ffffff;
 }
 
 .toolbar-btn-active {
@@ -2353,7 +2357,7 @@ body.is-resizing .outline-sidebar {
 }
 
 @keyframes tree-row-flash {
-  0% { background-color: var(--accent-color, #2196f3); color: #fff; }
+  0% { background-color: var(--accent-color, #9a9a9a); color: var(--accent-text, #2b2b2b); }
   100% { background-color: transparent; color: var(--accent-color); }
 }
 
@@ -2404,7 +2408,8 @@ body.is-resizing .outline-sidebar {
 }
 
 .tree-row.active {
-  color: var(--accent-color);
+  /* 高亮底色变浅后 accent 灰字不易读，选中项保留正文色，只用底色区分 */
+  color: var(--text-primary);
   background-color: var(--bg-secondary);
 }
 
@@ -2482,7 +2487,8 @@ body.is-resizing .outline-sidebar {
 }
 
 .outline-item.active {
-  color: var(--accent-color);
+  /* 与文件列表一致：用正文色保证可读，accent 只做左侧标识 */
+  color: var(--text-primary);
   border-left-color: var(--accent-color);
   background-color: var(--bg-secondary);
 }
@@ -2569,8 +2575,8 @@ body.is-resizing .outline-sidebar {
 }
 
 .context-menu-item:hover {
-  background-color: var(--accent-color);
-  color: var(--accent-text);
+  /* 与菜单栏下拉项 `.dropdown-item:hover` 保持同一底色变量 */
+  background-color: var(--bg-secondary);
 }
 
 /* 禁用状态：新建文件/文件夹仅在文件夹上可用，粘贴仅在剪贴板非空时可用 */
@@ -2580,13 +2586,7 @@ body.is-resizing .outline-sidebar {
   pointer-events: none;
 }
 
-.context-menu-item:hover .shortcut {
-  color: rgba(255, 255, 255, 0.75);
-}
-
-.context-menu-item:hover .submenu-arrow {
-  color: rgba(255, 255, 255, 0.75);
-}
+/* 悬停时快捷键/子菜单箭头沿用基础次要色，浅底上不用白色覆盖 */
 
 .context-menu-item .shortcut {
   font-size: 11px;
@@ -3671,12 +3671,12 @@ body.is-resizing .outline-sidebar {
 }
 .ecb-reload,
 .ecb-reload-all {
-  border-color: var(--accent, #4a90d9);
-  color: var(--accent, #4a90d9);
+  border-color: var(--accent-color, #9a9a9a);
+  color: var(--accent-color, #9a9a9a);
 }
 .ecb-reload:hover,
 .ecb-reload-all:hover {
-  background: rgba(74, 144, 217, 0.08);
+  background: rgba(128, 128, 128, 0.10);
 }
 .loading-overlay.hidden {
   display: none;
@@ -3987,7 +3987,7 @@ body.is-resizing .outline-sidebar {
 .toast.danger { background: #dc2626; }
 .toast.success { background: #16a34a; }
 .toast.warning { background: #f59e0b; }
-.toast.info { background: #2563eb; }
+.toast.info { background: #5f5f5f; }
 
 .toast-body {
   display: flex;

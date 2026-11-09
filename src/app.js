@@ -1511,7 +1511,8 @@ class MarkdownEditor {
       themeMode: 'system',
       fontScheme: 'system-sans',
       defaultView: 'edit',
-      previewPaneWidth: 360,
+      // 0 表示用户未自定义分屏宽度，按内容区 1/3 自动计算（见 applyPreviewPaneWidth）
+      previewPaneWidth: 0,
       scrollSync: true,
       language: 'zh',
       imageInsertMode: 'assets',
@@ -1541,6 +1542,9 @@ class MarkdownEditor {
       if (saved) delete saved.colorScheme;
       // 向后兼容：旧版本没有 fontScheme 时统一使用简约字体
       if (saved && saved.fontScheme === undefined) saved.fontScheme = 'system-sans';
+      // 旧版硬编码默认 360px 视为「未自定义」（用户极少恰好拖到 360），迁移为 0 以按 1/3 计算；
+      // 其它数值说明用户主动拖拽过，原样保留。
+      if (saved && saved.previewPaneWidth === 360) saved.previewPaneWidth = 0;
       // 类型校验：丢弃与默认值类型不符的字段，避免字符串/布尔错位污染 UI 与回写
       const merged = { ...defaults, ...saved };
       for (const k of Object.keys(merged)) {
@@ -4657,8 +4661,7 @@ class MarkdownEditor {
     // 纯预览 / 预览折叠 由 CSS 类控制布局，禁止用用户分屏宽度覆盖，否则占不满且留空白
     if (container.classList.contains('preview-mode')
         || container.classList.contains('preview-collapsed')) return;
-    const pw = this.settings.previewPaneWidth;
-    if (!pw) return;
+    const savedPw = this.settings.previewPaneWidth;
     const editorPane = document.getElementById('editor-pane');
     const previewPane = document.getElementById('preview-pane');
     if (!editorPane || !previewPane) return;
@@ -4668,6 +4671,8 @@ class MarkdownEditor {
     const resizerWidth = resizer ? resizer.offsetWidth : 6;
     const totalContentWidth = container.offsetWidth - outlineWidth - resizerWidth;
     if (totalContentWidth <= 0) return;
+    // 未自定义宽度时预览区默认占内容区 1/3（编辑区 2/3）；用户拖拽过的值原样沿用
+    const pw = savedPw > 0 ? savedPw : Math.round(totalContentWidth / 3);
     const editorWidth = totalContentWidth - pw;
     const editorRatio = (editorWidth / totalContentWidth);
     if (editorRatio > 0.1 && editorRatio < 0.9) {

@@ -1173,6 +1173,10 @@ body {
   will-change: flex;
 }
 
+/* 默认分屏比例：编辑区 2/3、预览区 1/3（JS 应用用户自定义宽度时会内联覆盖） */
+.editor-pane { flex: 1; }
+.preview-pane { flex: 0.5; }
+
 body.is-resizing,
 body.is-resizing * {
   cursor: col-resize !important;

@@ -5243,15 +5243,20 @@ class MarkdownEditor {
   // 与编辑器高亮共用同一配色（醒目黄色）。从后往前包裹，避免节点切分影响更早偏移。
   clearPreviewHighlights() {
     const pv = this.preview;
-    if (!pv) { window.getSelection().removeAllRanges(); return; }
-    const marks = pv.querySelectorAll('mark.preview-search-hl');
-    marks.forEach(mk => {
-      const parent = mk.parentNode;
-      while (mk.firstChild) parent.insertBefore(mk.firstChild, mk);
-      parent.removeChild(mk);
-    });
-    pv.normalize();
-    window.getSelection().removeAllRanges();
+    // 只在选区确实落在预览区时清理 DOM 选区：焦点在查找输入框时调用
+    // removeAllRanges() 会让输入框失焦（每次输入触发高亮刷新都会走到这里，表现为打一个字就失焦）
+    const sel = window.getSelection();
+    const selectionInPreview = !!(sel && pv && sel.rangeCount > 0 && pv.contains(sel.anchorNode));
+    if (pv) {
+      const marks = pv.querySelectorAll('mark.preview-search-hl');
+      marks.forEach(mk => {
+        const parent = mk.parentNode;
+        while (mk.firstChild) parent.insertBefore(mk.firstChild, mk);
+        parent.removeChild(mk);
+      });
+      pv.normalize();
+    }
+    if (selectionInPreview) sel.removeAllRanges();
   }
 
   highlightPreviewMatches(query, caseSensitive, useRegex) {

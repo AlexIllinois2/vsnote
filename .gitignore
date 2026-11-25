@@ -6,6 +6,10 @@ dist/
 target/
 out/
 
+# Nix
+/result
+/result-*
+
 # Generated renderer bundle — built from src/unified-renderer.js via scripts/build-renderer.mjs
 # Regenerate with `npm run build:renderer` (also auto-run on `npm install` via the `prepare` script). Do NOT edit by hand.
 src/lib/unified-bundle.js

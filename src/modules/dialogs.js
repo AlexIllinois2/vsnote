@@ -101,41 +101,7 @@ function showConfirmDialog(opts) {
   });
 }
 
-// 关闭窗口确认对话框：返回 { action: 'quit', remember: boolean }，取消则 resolve(null)。
-function showCloseDialog(opts) {
-  const doc = opts.doc || document;
-  const t = opts.t || ((k) => k);
-  return new Promise((resolve) => {
-    const dialog = doc.getElementById('close-confirm-dialog');
-    const quitBtn = doc.getElementById('close-dialog-quit');
-    const rememberCb = doc.getElementById('close-dialog-remember');
-    const overlay = dialog;
-
-    dialog.classList.remove('hidden');
-
-    const cleanup = () => {
-      dialog.classList.add('hidden');
-      quitBtn.removeEventListener('click', onQuit);
-      overlay.removeEventListener('click', onOverlay);
-    };
-
-    const onQuit = () => {
-      cleanup();
-      resolve({ action: 'quit', remember: rememberCb.checked });
-    };
-    const onOverlay = (e) => {
-      if (e.target === overlay) {
-        cleanup();
-        resolve(null);
-      }
-    };
-
-    quitBtn.addEventListener('click', onQuit);
-    overlay.addEventListener('click', onOverlay);
-  });
-}
-
-const Dialogs = { showSaveDialog, showConfirmDialog, showCloseDialog };
+const Dialogs = { showSaveDialog, showConfirmDialog };
 
 // 浏览器：作为独立 <script> 加载，挂到全局 Dialogs
 if (typeof window !== 'undefined' && typeof module === 'undefined') {

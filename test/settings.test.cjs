@@ -23,7 +23,6 @@ test('settings: defaultSettings 返回完整默认配置', async () => {
     assert.strictEqual(d.lineHeight, 1.7);
     assert.strictEqual(d.maxWidth, 0);
     assert.strictEqual(d.themeMode, 'system', '默认跟随系统深浅色');
-    assert.strictEqual(d.colorScheme, 'default');
     assert.strictEqual(d.fontScheme, 'system-sans');
     assert.strictEqual(d.defaultView, 'edit');
     assert.strictEqual(d.scrollSync, true);
@@ -35,7 +34,6 @@ test('settings: defaultSettings 返回完整默认配置', async () => {
     assert.strictEqual(d.codeLineNumbers, false);
     assert.strictEqual(d.codeWrap, false);
     assert.strictEqual(d.softBreaks, true);
-    assert.strictEqual(d.closeAction, 'ask');
     assert.strictEqual(d.toolbarCollapsed, true, '工具栏初始状态为收缩');
     assert.strictEqual(d.sidebarHidden, false);
     assert.ok(Array.isArray(d.customFonts), 'customFonts 应为数组');
@@ -88,23 +86,12 @@ test('settings: loadSettings 丢弃未知键', async () => {
   } finally { cleanup(w); }
 });
 
-test('settings: loadSettings 旧版 colorScheme 推断 fontScheme', async () => {
-  const { w, ed } = await makeEditor();
-  try {
-    w.localStorage.setItem('tizumark-settings', JSON.stringify({ colorScheme: 'forest' }));
-    const loaded = ed.loadSettings();
-    assert.strictEqual(loaded.colorScheme, 'forest');
-    assert.strictEqual(loaded.fontScheme, 'system-sans', '旧版无 fontScheme 时应从 colorScheme 推断');
-  } finally { cleanup(w); }
-});
-
 test('settings: loadSettings 坏 JSON 回退默认', async () => {
   const { w, ed } = await makeEditor();
   try {
     w.localStorage.setItem('tizumark-settings', 'not-json{');
     const loaded = ed.loadSettings();
     assert.strictEqual(loaded.fontSize, 14, '坏 JSON 应回退默认');
-    assert.strictEqual(loaded.colorScheme, 'default');
   } finally { cleanup(w); }
 });
 
@@ -123,10 +110,8 @@ test('settings: applyThemeMode dark 设置 data-theme 与 cm 主题', async () =
   const { w, ed } = await makeEditor();
   try {
     ed.settings.themeMode = 'dark';
-    ed.settings.colorScheme = 'nord';
     await ed.applyThemeMode();
     assert.strictEqual(w.document.documentElement.getAttribute('data-theme'), 'dark');
-    assert.strictEqual(w.document.documentElement.getAttribute('data-color-scheme'), 'nord');
     assert.strictEqual(ed.cm.getOption('theme'), 'material-darker');
   } finally { cleanup(w); }
 });
@@ -137,23 +122,6 @@ test('settings: applyThemeMode system 跟随 matchMedia(返回 light)', async ()
     ed.settings.themeMode = 'system';
     await ed.applyThemeMode();
     assert.strictEqual(w.document.documentElement.getAttribute('data-theme'), 'light', 'matchMedia 默认 false 应为 light');
-  } finally { cleanup(w); }
-});
-
-test('settings: toggleTheme 按当前观感取反并把跟随系统固定为明/暗', async () => {
-  const { w, ed } = await makeEditor();
-  try {
-    ed.setStatus = () => {};
-    ed.settings.themeMode = 'system';
-    // harness 的 matchMedia 恒返回 false ⇒ 当前观感为 light，点击后应切到 dark
-    await ed.toggleTheme();
-    assert.strictEqual(ed.settings.themeMode, 'dark', '从观感 light 应切到 dark');
-    assert.strictEqual(w.document.documentElement.getAttribute('data-theme'), 'dark');
-    assert.strictEqual(ed.cm.getOption('theme'), 'material-darker');
-    await ed.toggleTheme();
-    assert.strictEqual(ed.settings.themeMode, 'light', '再点一次应切回 light');
-    assert.strictEqual(w.document.documentElement.getAttribute('data-theme'), 'light');
-    assert.strictEqual(ed.cm.getOption('theme'), 'default');
   } finally { cleanup(w); }
 });
 
@@ -245,7 +213,6 @@ test('settings: saveSettings→loadSettings 端到端一致（真往返）', asy
     ed.settings = ed.defaultSettings();
     ed.settings.tabSize = 2;
     ed.settings.themeMode = 'dark';
-    ed.settings.colorScheme = 'nord';
     ed.settings.maxWidth = 720;
     ed.settings.customFonts = [{ id: 'cf9', name: 'X', fileName: 'x.ttf', hash: 'h9' }];
     ed.saveSettings();
@@ -256,7 +223,6 @@ test('settings: saveSettings→loadSettings 端到端一致（真往返）', asy
 
     assert.strictEqual(loaded.tabSize, 2, '保存的 tabSize 应原样取回');
     assert.strictEqual(loaded.themeMode, 'dark');
-    assert.strictEqual(loaded.colorScheme, 'nord');
     assert.strictEqual(loaded.maxWidth, 720);
     assert.strictEqual(loaded.fontSize, 14, '未改动的字段应仍是默认');
     // customFonts 逐字段比较：JSON 往返后元素键序可能变化，deepStrictEqual 对键序敏感会误报

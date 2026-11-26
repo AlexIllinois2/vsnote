@@ -2639,8 +2639,7 @@ body.is-resizing .outline-sidebar {
 
 /* 顶层对话框（保存确认、设置恢复确认等）必须在其他对话框之上 */
 #save-dialog.dialog-overlay,
-#confirm-dialog.dialog-overlay,
-#close-confirm-dialog.dialog-overlay {
+#confirm-dialog.dialog-overlay {
   z-index: 1001;
 }
 
@@ -2782,57 +2781,6 @@ body.is-resizing .outline-sidebar {
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
-}
-
-/* 关闭窗口确认对话框 */
-.close-confirm-dialog {
-  max-width: 380px;
-}
-
-.close-confirm-dialog .dialog-content p {
-  margin-bottom: 8px;
-}
-.close-confirm-dialog label {
-  font-size: 13px;
-  color: var(--text-primary);
-}
-.close-confirm-dialog input[type="checkbox"] {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
-  border: 1.5px solid var(--text-secondary);
-  border-radius: 3px;
-  background: var(--bg-primary);
-  cursor: pointer;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-}
-.close-confirm-dialog input[type="checkbox"]:checked {
-  border-color: var(--accent-color);
-  background: var(--accent-color);
-}
-.close-confirm-dialog input[type="checkbox"]:checked::after {
-  content: '';
-  width: 5px;
-  height: 9px;
-  border-right: 2px solid var(--accent-text);
-  border-bottom: 2px solid var(--accent-text);
-  transform: rotate(45deg);
-  margin-bottom: 1px;
-}
-.close-confirm-dialog input[type="checkbox"]:hover {
-  border-color: var(--accent-color);
-}
-.close-dialog-remember-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  cursor: pointer;
 }
 
 /* EULA 对话框 */

@@ -246,9 +246,7 @@ const I18N = {
     softBreaks: '软换行（回车即换行）',
     softBreaksHint: '开启后，段落内单个回车直接换行（与「空格+空格+回车」一致），更符合日常写作习惯，也便于从其他笔记软件迁移。关闭则恢复 CommonMark 标准（回车视为空格）。',
     tabSizeHint: '每按一次 Tab 键缩进几个空格。列表要往里缩一级（做子列表）也靠这个宽度，建议用 4，最稳。',
-    closeAction: '关闭窗口时',
-    closeActionAsk: '每次询问',
-    closeActionQuit: '退出应用',
+
     followSystem: '跟随系统',
     resetDefault: '恢复默认',
     done: '完成',
@@ -647,9 +645,7 @@ const I18N = {
     softBreaks: 'Soft Line Break (Enter = newline)',
     softBreaksHint: 'When enabled, a single Enter inside a paragraph creates a line break (same as "two spaces + Enter"), matching everyday writing and easing migration from other note apps. When disabled, CommonMark standard applies (Enter is treated as a space).',
     tabSizeHint: 'How many spaces a Tab press indents. Indenting a list one level (to make a sub-list) also uses this width; 4 is recommended for the safest nesting.',
-    closeAction: 'On window close',
-    closeActionAsk: 'Ask every time',
-    closeActionQuit: 'Quit app',
+
     followSystem: 'Follow System',
     resetDefault: 'Reset Default',
     done: 'Done',
@@ -1522,7 +1518,6 @@ class MarkdownEditor {
       codeLineNumbers: false,
       codeWrap: false,
       softBreaks: true,
-      closeAction: 'ask',
       // 初始状态改为收缩；用户手动展开/收起后按其选择持久化
       toolbarCollapsed: true,
       sidebarHidden: false,
@@ -1845,11 +1840,6 @@ class MarkdownEditor {
       this.settings.softBreaks = e.target.checked;
       this.saveSettings();
       this.updatePreview();
-    });
-    document.getElementById('set-close-action').value = s.closeAction || 'ask';
-    document.getElementById('set-close-action').addEventListener('change', (e) => {
-      this.settings.closeAction = e.target.value;
-      this.saveSettings();
     });
     document.getElementById('set-code-line-numbers').addEventListener('change', (e) => {
       this.settings.codeLineNumbers = e.target.checked;
@@ -4425,6 +4415,9 @@ class MarkdownEditor {
       this.updateMaximizeIcon();
     });
 
+    // ---- 主窗口尺寸/位置记忆（防抖落盘）----
+    this.initWindowStateMemory();
+
     // 退出时全量 revoke Blob URL，避免长会话累积的 dataUri→blob 映射泄漏内存
     window.addEventListener('beforeunload', () => {
       if (this._imageURLCache && typeof URL !== 'undefined' && URL.revokeObjectURL) {
@@ -4518,7 +4511,7 @@ class MarkdownEditor {
         // 通用兜底：Esc 关闭当前可见弹窗，等价点击其「取消/关闭」按钮以复用既有清理逻辑
         // （确认/保存/输入等弹窗 resolve(false/null)，搜索弹窗清高亮），无按钮则直接隐藏。
         // 有专属 Esc 处理的弹窗（about/shortcuts/查找栏及各搜索输入框）已在上方处理或随后
-        // 自行处理，此处兜底覆盖其余：settings/update/insert-*/close-confirm 等。
+        // 自行处理，此处兜底覆盖其余：settings/update/insert-* 等。
         // 叠加场景（如 settings 内触发 confirm）取 DOM 序靠前者——确认/保存/输入类
         // 小弹窗在 HTML 中位于 settings/shortcuts 之前，恰好即语义上的最上层。
         // eula-dialog 例外：必须用户明确点「我知道了」，不允许 Esc 跳过。
@@ -10160,6 +10153,31 @@ input[type="checkbox"]:checked::after { display: none !important; }
     await this.handleAppClose();
   }
 
+  // ---- 主窗口尺寸/位置记忆 ----
+  // 恢复由 tauri-plugin-window-state 在窗口创建时自动完成（restore_state）。
+  // 落盘有两条路径：1) Rust 端 quit_app 退出前显式 save_window_state；
+  // 2) 本方法在窗口 resize/move 后防抖落盘。插件自身只在 RunEvent::Exit 写
+  // .window-state.json，进程被直接杀掉（tauri dev Ctrl+C、系统强杀）时不触发，
+  // 重启后窗口就回到 tauri.conf.json 的 1200x800 默认值——这正是「窗口大小
+  // 不被记忆」的根因。保存用插件默认 state_flags（含 SIZE/POSITION/MAXIMIZED），
+  // 最大化/最小化时插件内部会跳过尺寸覆盖，恢复时按 maximized 标志还原。
+  initWindowStateMemory() {
+    try {
+      const appWindow = window.__TAURI__.window.getCurrentWindow();
+      if (!appWindow || typeof appWindow.onResized !== 'function') return;
+      let timer = null;
+      const scheduleSave = () => {
+        if (timer) return; // resize/move 连发时只保留最后一次
+        timer = setTimeout(() => {
+          timer = null;
+          invoke('plugin:window-state|save_window_state').catch(() => {});
+        }, 800);
+      };
+      appWindow.onResized(scheduleSave).catch(() => {});
+      appWindow.onMoved(scheduleSave).catch(() => {});
+    } catch (e) { /* 浏览器环境无窗口 API，静默跳过 */ }
+  }
+
   // ========== Markdown 格式化辅助方法 ==========
 
   wrapSelection(before, after) {
@@ -10803,29 +10821,11 @@ input[type="checkbox"]:checked::after { display: none !important; }
       }
       // 2. 保存会话
       this.saveSession();
-      // 3. 按用户偏好执行关闭行为（仅剩退出；历史遗留的 minimize 值回退为每次询问）
-      const action = await this._resolveCloseAction();
-      if (!action) return; // 用户在弹框点了取消
+      // 3. 托盘已移除，关闭即退出
       await invoke('quit_app');
     } catch (error) {
       console.error('handleAppClose error:', error);
     }
-  }
-
-  async _resolveCloseAction() {
-    const action = this.settings.closeAction || 'ask';
-    if (action === 'quit') return 'quit';
-    // ask — 弹出确认对话框
-    const result = await Dialogs.showCloseDialog({
-      t: (k, p) => this.t(k, p),
-      doc: document,
-    });
-    if (!result) return null; // cancelled
-    if (result.remember) {
-      this.settings.closeAction = result.action;
-      this.saveSettings();
-    }
-    return result.action;
   }
 
   initFormatToolbar() {

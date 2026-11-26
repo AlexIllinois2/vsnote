@@ -249,8 +249,17 @@ fn files_from_args(argv: Vec<String>) -> Vec<String> {
 }
 
 // 前端调此命令真正退出应用（关窗弹框选"退出"时调用）。
+// 退出前显式保存窗口状态（尺寸/位置/最大化）。tauri-plugin-window-state 本身
+// 只在 RunEvent::Exit 时落盘 .window-state.json，实测 app.exit(0) 触发的该事件
+// 并不总是可靠（进程被直接杀掉时更不会触发），导致窗口大小重启后丢失、
+// 恢复 1200x800 默认值。这里在退出前主动调用 save_window_state 兜底，
+// 内存里的窗口状态缓存由插件在 Moved/Resized 事件中实时维护。
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
+    // save_window_state 是 AppHandleExt 的方法（保存全部窗口，含 main），
+    // WindowExt 只有 restore_state；最大化/最小化状态下插件内部会跳过尺寸覆盖。
+    use tauri_plugin_window_state::{AppHandleExt, StateFlags};
+    let _ = app.save_window_state(StateFlags::all());
     app.exit(0);
 }
 

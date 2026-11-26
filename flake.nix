@@ -1,4 +1,6 @@
 {
+  # 安装(用户): nix profile install .#vsnote
+
   description = "vsnote —— 轻量跨平台 Markdown 编辑器（Tauri v2）";
 
   inputs = {

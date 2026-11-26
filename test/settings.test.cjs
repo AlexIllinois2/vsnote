@@ -36,7 +36,7 @@ test('settings: defaultSettings 返回完整默认配置', async () => {
     assert.strictEqual(d.codeWrap, false);
     assert.strictEqual(d.softBreaks, true);
     assert.strictEqual(d.closeAction, 'ask');
-    assert.strictEqual(d.toolbarCollapsed, false);
+    assert.strictEqual(d.toolbarCollapsed, true, '工具栏初始状态为收缩');
     assert.strictEqual(d.sidebarHidden, false);
     assert.ok(Array.isArray(d.customFonts), 'customFonts 应为数组');
     assert.strictEqual(d.customFonts.length, 0, 'customFonts 应为空');

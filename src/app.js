@@ -1523,7 +1523,8 @@ class MarkdownEditor {
       codeWrap: false,
       softBreaks: true,
       closeAction: 'ask',
-      toolbarCollapsed: false,
+      // 初始状态改为收缩；用户手动展开/收起后按其选择持久化
+      toolbarCollapsed: true,
       sidebarHidden: false,
       customFonts: [],
       editorFont: '',
@@ -3368,6 +3369,29 @@ class MarkdownEditor {
     this._gutterMouseUp = (e) => this.onGutterMouseUp(e);
     document.addEventListener('mousemove', this._gutterMouseMove);
     document.addEventListener('mouseup', this._gutterMouseUp);
+
+    // ---- 剪切（Ctrl+X）接管：整行选区在 WebKitGTK 下会误删下一行 ----
+    // 根因：CM5 contenteditable 的 onCopyCut（codemirror.js ~8880）在
+    // 「clipboardData.setData 后 getData 回读校验」失败时（WebKitGTK/Tauri 环境
+    // 会发生）落入 hidden-textarea 兜底分支，且该分支【不 preventDefault】——
+    // 事件派发结束后浏览器原生 cut 继续执行：此时 CM 已 replaceSelection 把选区
+    // 文本删过一轮、DOM 已重渲染，WebKit 把旧的 DOM 选区重锚到紧邻的下一行，
+    // 于是原生 cut 把下一行也删掉并写入剪贴板。表现即「剪切一行消失两行，
+    // 粘贴只能恢复下一行」。这里在捕获阶段接管 cut：剪贴板写入精确的 CM 选区
+    // 文本、preventDefault 阻断原生 cut、stopPropagation 阻断 CM 的 onCopyCut，
+    // 删除只由 replaceSelection 做一次。Blink/WebKit 行为由此一致。
+    // copy 事件不需要接管：无预删除，原生序列化结果与选区一致。
+    this.cm.getWrapperElement().addEventListener('cut', (e) => {
+      if (!e.clipboardData) return;               // 无剪贴板接口：走 CM 原有路径
+      const input = this.cm.display && this.cm.display.input;
+      if (input && input.composing) return;       // IME 组合中不接管
+      if (!this.cm.somethingSelected()) return;   // 空选区：CM 的整行剪切兜底仍可用
+      const text = this.cm.getSelection();        // 整行选区含行尾换行（"text\n"）
+      e.clipboardData.setData('text/plain', text);
+      e.preventDefault();
+      e.stopPropagation();
+      this.cm.replaceSelection('', null, 'cut');
+    }, true); // capture：先于 CM 在 lineDiv 上的冒泡监听
 
     // 编辑区：Ctrl/Cmd + 点击链接 → 用系统浏览器（系统默认程序）打开。
     // 仅左键 + Ctrl/⌘ 触发；Shift 多选、右键等保留 CodeMirror 原生行为。

@@ -41,6 +41,12 @@ src-tauri/*.app
 # IDE
 .vscode/
 .idea/
+/.gitee/
+/.trae/
+/.workbuddy/
+/.claude/
+/.superpowers/
+/.screenshots/
 *.swp
 *.swo
 *~

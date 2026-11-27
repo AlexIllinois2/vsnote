@@ -134,9 +134,6 @@
               <div class="dropdown-item" id="btn-open-folder">
                 <span>打开文件夹…</span>
               </div>
-              <div class="dropdown-item" id="btn-open-db">
-                <span>打开 SQLite db…</span>
-              </div>
               <div class="dropdown-item dropdown-submenu-trigger" id="btn-recent" data-submenu="recent-files-submenu">
                 <span>打开最近的文件</span>
                 <span class="submenu-arrow">&#9656;</span>
@@ -148,6 +145,14 @@
               </div>
               <div class="dropdown-item" id="btn-save-as">
                 <span>另存为</span>
+                <span class="shortcut"></span>
+              </div>
+              <div class="dropdown-separator"></div>
+              <div class="dropdown-item" id="btn-open-db">
+                <span>打开 SQLite db…</span>
+              </div>
+              <div class="dropdown-item hidden" id="btn-export-db">
+                <span>导出为 SQLite db…</span>
                 <span class="shortcut"></span>
               </div>
               <div class="dropdown-separator"></div>
@@ -164,10 +169,6 @@
               </div>
               <div class="dropdown-item" id="btn-export-pdf">
                 <span>导出 PDF</span>
-                <span class="shortcut"></span>
-              </div>
-              <div class="dropdown-item hidden" id="btn-export-db">
-                <span>导出为 SQLite db…</span>
                 <span class="shortcut"></span>
               </div>
               <div class="dropdown-item hidden" id="btn-export-folder">
@@ -187,10 +188,10 @@
                 <span>拉取 Git 远端更新</span>
                 <span class="shortcut"></span>
               </div>
+              <div class="dropdown-separator"></div>
               <div class="dropdown-item" id="btn-shortcuts">
                 <span>快捷键设置</span>
               </div>
-              <div class="dropdown-separator"></div>
               <div class="dropdown-item" id="btn-settings">
                 <span>设置</span>
               </div>

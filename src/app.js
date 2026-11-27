@@ -3360,27 +3360,60 @@ class MarkdownEditor {
     document.addEventListener('mousemove', this._gutterMouseMove);
     document.addEventListener('mouseup', this._gutterMouseUp);
 
-    // ---- 剪切（Ctrl+X）接管：整行选区在 WebKitGTK 下会误删下一行 ----
+    // ---- 剪切（Ctrl+X）接管：有选区或空选区（剪当前行）都不能走 CM 原路径 ----
     // 根因：CM5 contenteditable 的 onCopyCut（codemirror.js ~8880）在
     // 「clipboardData.setData 后 getData 回读校验」失败时（WebKitGTK/Tauri 环境
     // 会发生）落入 hidden-textarea 兜底分支，且该分支【不 preventDefault】——
     // 事件派发结束后浏览器原生 cut 继续执行：此时 CM 已 replaceSelection 把选区
     // 文本删过一轮、DOM 已重渲染，WebKit 把旧的 DOM 选区重锚到紧邻的下一行，
     // 于是原生 cut 把下一行也删掉并写入剪贴板。表现即「剪切一行消失两行，
-    // 粘贴只能恢复下一行」。这里在捕获阶段接管 cut：剪贴板写入精确的 CM 选区
-    // 文本、preventDefault 阻断原生 cut、stopPropagation 阻断 CM 的 onCopyCut，
-    // 删除只由 replaceSelection 做一次。Blink/WebKit 行为由此一致。
+    // 粘贴只能恢复下一行」。空选区（光标在行内直接 Ctrl+X 剪当前行）同样命中：
+    // CM 默认 lineWiseCopyCut=true 会走 copyableRanges 整行删除 + 同样的兜底分支。
+    // 这里在捕获阶段接管 cut：剪贴板写入精确文本、preventDefault 阻断原生 cut、
+    // stopPropagation 阻断 CM 的 onCopyCut，删除只做一次。Blink/WebKit 行为一致。
     // copy 事件不需要接管：无预删除，原生序列化结果与选区一致。
+    //
+    // 【WebKitGTK 双发 cut】100ms 内只允许第一个 cut 生效（真机 App 按一次
+    // Ctrl+X 会连发两次 cut 事件）。第二次到达时第一次的删除已执行、选区已
+    // 坍缩到下一行行首，若照常处理就会把下一行再剪走——正是「一行消失两行、
+    // 剪贴板只剩下一行」的真机表现。被限流的 cut 只阻断（preventDefault+
+    // stopPropagation），不写剪贴板（第一次已写入正确内容）。
+    this._lastCutAt = 0;
     this.cm.getWrapperElement().addEventListener('cut', (e) => {
-      if (!e.clipboardData) return;               // 无剪贴板接口：走 CM 原有路径
+      const now = Date.now();
+      if (now - this._lastCutAt < 100) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      this._lastCutAt = now;
       const input = this.cm.display && this.cm.display.input;
       if (input && input.composing) return;       // IME 组合中不接管
-      if (!this.cm.somethingSelected()) return;   // 空选区：CM 的整行剪切兜底仍可用
-      const text = this.cm.getSelection();        // 整行选区含行尾换行（"text\n"）
-      e.clipboardData.setData('text/plain', text);
+      const hasSel = this.cm.somethingSelected();
+      if (!hasSel && this.cm.listSelections().length > 1) return; // 多光标：走 CM 原路径
+      let text, delFrom, delTo;
+      if (hasSel) {
+        text = this.cm.getSelection();            // 整行选区含行尾换行（"text\n"）
+      } else {
+        // 空选区：剪光标所在整行（含行尾换行）；末行无换行则剪行文本
+        const line = this.cm.getCursor().line;
+        const lineText = this.cm.getLine(line);
+        if (lineText === '' && line === this.cm.lastLine()) return; // 末空行：无可剪
+        text = line < this.cm.lastLine() ? lineText + '\n' : lineText;
+        delFrom = CodeMirror.Pos(line, 0);
+        delTo = line < this.cm.lastLine() ? CodeMirror.Pos(line + 1, 0)
+                                          : CodeMirror.Pos(line, lineText.length);
+      }
+      try {
+        if (e.clipboardData) e.clipboardData.setData('text/plain', text);
+      } catch (err) { /* 个别环境 setData 抛错：不能因此放行原生 cut，吞掉 */ }
       e.preventDefault();
       e.stopPropagation();
-      this.cm.replaceSelection('', null, 'cut');
+      if (hasSel) {
+        this.cm.replaceSelection('', null, 'cut');
+      } else {
+        this.cm.replaceRange('', delFrom, delTo, 'cut');
+      }
     }, true); // capture：先于 CM 在 lineDiv 上的冒泡监听
 
     // 编辑区：Ctrl/Cmd + 点击链接 → 用系统浏览器（系统默认程序）打开。

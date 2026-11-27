@@ -137,6 +137,7 @@ function assert(name, cond, detail) {
 
     // ---- 用例 2：真实 Ctrl+X（可信键盘事件，贴近真机）----
     await setContent();
+    await new Promise((r) => setTimeout(r, 150)); // 跨过 100ms cut 限流窗口
     await page.evaluate(() => {
       const ed = window.editor;
       ed.cm.focus();
@@ -162,8 +163,51 @@ function assert(name, cond, detail) {
     const r3 = await page.evaluate(() => window.editor.cm.getValue());
     bump(assert('Ctrl+V 恢复被剪切的行（当前行回来了）', r3 === 'aaa\nbbb\nccc\nddd\n', `doc=${JSON.stringify(r3)}`));
 
-    // ---- 用例 4：部分选区剪切仍精确 ----
+    // ---- 用例 4：空选区（光标在行内）Ctrl+X 剪当前行，不吞下一行 ----
+    // WebKitGTK 真机路径：CM lineWiseCopyCut 兜底同样踩回读失败→不 preventDefault
+    // →原生 cut 误删下一行的坑，故空选区也必须由接管逻辑处理。
     await setContent();
+    await new Promise((r) => setTimeout(r, 150));
+    await page.evaluate(() => {
+      const ed = window.editor;
+      ed.cm.focus();
+      ed.cm.setCursor({ line: 1, ch: 1 }); // 光标停在 "bbb" 内，无选区
+    });
+    await page.keyboard.down('Control');
+    await page.keyboard.press('KeyX');
+    await page.keyboard.up('Control');
+    await new Promise((r) => setTimeout(r, 300));
+    const r5 = await page.evaluate(async () => {
+      let clip = null;
+      try { clip = await navigator.clipboard.readText(); } catch (e) { clip = 'read-err:' + e.message; }
+      return { doc: window.editor.cm.getValue(), clip };
+    });
+    bump(assert('空选区：只删光标所在行（不吞下一行）', r5.doc === 'aaa\nccc\nddd\n', `doc=${JSON.stringify(r5.doc)}`));
+    bump(assert('空选区：剪贴板为整行文本（含换行）', r5.clip === 'bbb\n', `clip=${JSON.stringify(r5.clip)}`));
+
+    // ---- 用例 5：空选区剪切末行（无行尾换行）----
+    await page.evaluate(() => { window.editor.cm.setValue('aaa\nbbb\nccc'); });
+    await new Promise((r) => setTimeout(r, 150));
+    await page.evaluate(() => {
+      const ed = window.editor;
+      ed.cm.focus();
+      ed.cm.setCursor({ line: 2, ch: 1 }); // 光标在末行 "ccc"
+    });
+    await page.keyboard.down('Control');
+    await page.keyboard.press('KeyX');
+    await page.keyboard.up('Control');
+    await new Promise((r) => setTimeout(r, 300));
+    const r6 = await page.evaluate(async () => {
+      let clip = null;
+      try { clip = await navigator.clipboard.readText(); } catch (e) { clip = 'read-err:' + e.message; }
+      return { doc: window.editor.cm.getValue(), clip };
+    });
+    bump(assert('空选区末行：删末行文本', r6.doc === 'aaa\nbbb\n', `doc=${JSON.stringify(r6.doc)}`));
+    bump(assert('空选区末行：剪贴板为末行文本（无换行）', r6.clip === 'ccc', `clip=${JSON.stringify(r6.clip)}`));
+
+    // ---- 用例 6：部分选区剪切仍精确 ----
+    await setContent();
+    await new Promise((r) => setTimeout(r, 150));
     await page.evaluate(() => {
       const ed = window.editor;
       ed.cm.focus();
@@ -180,6 +224,41 @@ function assert(name, cond, detail) {
     });
     bump(assert('部分选区：只删选中字符', r4.doc === 'aaa\nbb\nccc\nddd\n', `doc=${JSON.stringify(r4.doc)}`));
     bump(assert('部分选区：剪贴板为选中字符', r4.clip === 'b', `clip=${JSON.stringify(r4.clip)}`));
+
+    // ---- 用例 6：连发两次 cut（WebKitGTK 双发）只删一次 ----
+    // 真机 App 按一次 Ctrl+X 连发两个 cut 事件：第二次到达时选区已坍缩到下一行，
+    // 旧逻辑会把它当空选区再剪一行。100ms 限流应阻断第二次。
+    await setContent();
+    await new Promise((r) => setTimeout(r, 150)); // 跨过限流窗口，避免吃到上一用例的时间戳
+    const r7 = await page.evaluate(() => {
+      const ed = window.editor;
+      ed.cm.focus();
+      ed.cm.setSelection({ line: 1, ch: 0 }, { line: 2, ch: 0 }); // "bbb\n"
+      const target = ed.cm.display.lineDiv;
+      const mk = () => new ClipboardEvent('cut', { clipboardData: new DataTransfer(), bubbles: true, cancelable: true });
+      const e1 = mk(); target.dispatchEvent(e1);
+      const e2 = mk(); target.dispatchEvent(e2); // 100ms 内的第二次
+      return { doc: ed.cm.getValue(), e1p: e1.defaultPrevented, e2p: e2.defaultPrevented };
+    });
+    bump(assert('双发 cut：只删当前行', r7.doc === 'aaa\nccc\nddd\n', `doc=${JSON.stringify(r7.doc)}`));
+    bump(assert('双发 cut：第一次 preventDefault', r7.e1p === true));
+    bump(assert('双发 cut：第二次也被阻断（不删除下一行）', r7.e2p === true));
+
+    // ---- 用例 7：空选区连发两次 cut（真机光标在行内 Ctrl+X 场景）----
+    await setContent();
+    await new Promise((r) => setTimeout(r, 150));
+    const r8 = await page.evaluate(() => {
+      const ed = window.editor;
+      ed.cm.focus();
+      ed.cm.setCursor({ line: 1, ch: 1 });
+      const target = ed.cm.display.lineDiv;
+      const mk = () => new ClipboardEvent('cut', { clipboardData: new DataTransfer(), bubbles: true, cancelable: true });
+      const e1 = mk(); target.dispatchEvent(e1);
+      const e2 = mk(); target.dispatchEvent(e2);
+      return { doc: ed.cm.getValue(), clip: e1.clipboardData.getData('text/plain') };
+    });
+    bump(assert('空选区双发 cut：只删当前行', r8.doc === 'aaa\nccc\nddd\n', `doc=${JSON.stringify(r8.doc)}`));
+    bump(assert('空选区双发 cut：剪贴板为当前行', r8.clip === 'bbb\n', `clip=${JSON.stringify(r8.clip)}`));
 
     if (pageErrors.length) {
       console.log('\n[页面运行时错误] ' + pageErrors.slice(0, 8).join(' | '));
